@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mesh:mesh xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:mesh="XMLMesh"
+  xmlns:element="XMLMesh"
+  xsi:schemaLocation="XMLMesh ../../xml_schemas/mesh_h2d_xml.xsd">
+  <vertices>
+    <vertex x="0" y="0" i="0"/>
+    <vertex x="0" y="1" i="1"/>
+    <vertex x="0" y="2" i="2"/>
+    <vertex x="1" y="0" i="3"/>
+    <vertex x="1" y="1" i="4"/>
+    <vertex x="1" y="2" i="5"/>
+    <vertex x="2" y="0" i="6"/>
+    <vertex x="2" y="1" i="7"/>
+    <vertex x="2" y="2" i="8"/>
+    <vertex x="3" y="0" i="9"/>
+    <vertex x="3" y="1" i="10"/>
+    <vertex x="3" y="2" i="11"/>
+  </vertices>
+
+  <elements>
+    <element:quad v1="0" v2="3" v3="4" v4="1" marker="Copper" />
+    <element:quad v1="3" v2="6" v3="7" v4="4" marker="Copper" />
+    <element:quad v1="4" v2="7" v3="8" v4="5" marker="Copper" />
+    <element:quad v1="1" v2="4" v3="5" v4="2" marker="Copper" />
+    <element:quad v1="6" v2="9" v3="10" v4="7" marker="Copper" />
+    <element:quad v1="7" v2="10" v3="11" v4="8" marker="Copper" />
+  </elements>
+
+  <edges>
+    <edge v1="0" v2="3" marker="a" />
+    <edge v1="3" v2="6" marker="a" />
+    <edge v1="6" v2="9" marker="a" />
+    <edge v1="9" v2="10" marker="a" />
+    <edge v1="10" v2="11" marker="a" />
+    <edge v1="11" v2="8" marker="a" />
+    <edge v1="8" v2="5" marker="a" />
+    <edge v1="5" v2="2" marker="a" />
+    <edge v1="2" v2="1" marker="a" />
+    <edge v1="1" v2="0" marker="a" />
+  </edges>
+</mesh:mesh>

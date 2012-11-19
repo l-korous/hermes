@@ -20,13 +20,13 @@ ELSE ("$ENV{MY_UMFPACK_LIB_DIRS}" STREQUAL "" OR "$ENV{MY_UMFPACK_INC_DIRS}" STR
   SET(MY_UMFPACK_INC_DIRS $ENV{MY_UMFPACK_INC_DIRS})
 ENDIF ("$ENV{MY_UMFPACK_LIB_DIRS}" STREQUAL "" OR "$ENV{MY_UMFPACK_INC_DIRS}" STREQUAL "")
 
-FIND_PATH(UMFPACK_INCLUDE_DIR umfpack.h ${MY_UMFPACK_INC_DIRS}  NO_DEFAULT_PATH)
-FIND_PATH(AMD_INCLUDE_DIR     amd.h     ${MY_UMFPACK_INC_DIRS}  NO_DEFAULT_PATH)
+FIND_PATH(UMFPACK_INCLUDE_DIR umfpack.h ${MY_UMFPACK_INC_DIRS})
+FIND_PATH(AMD_INCLUDE_DIR     amd.h     ${MY_UMFPACK_INC_DIRS})
 FIND_PATH(UMFPACK_INCLUDE_DIR umfpack.h /usr/include /usr/include/umfpack /usr/local/include/UMFPACK /usr/include/suitesparse /opt/local/include/ufsparse)
 FIND_PATH(AMD_INCLUDE_DIR     amd.h     /usr/include /usr/local/include/AMD /usr/include/suitesparse /opt/local/include/ufsparse)
 
-FIND_LIBRARY(UMFPACK_LIBRARY  NAMES libumfpack umfpack  PATHS ${MY_UMFPACK_LIB_DIRS}  NO_DEFAULT_PATH) 
-FIND_LIBRARY(AMD_LIBRARY      NAMES libamd amd          PATHS ${MY_UMFPACK_LIB_DIRS}  NO_DEFAULT_PATH)
+FIND_LIBRARY(UMFPACK_LIBRARY  NAMES libumfpack umfpack  PATHS ${MY_UMFPACK_LIB_DIRS}) 
+FIND_LIBRARY(AMD_LIBRARY      NAMES libamd amd          PATHS ${MY_UMFPACK_LIB_DIRS})
 FIND_LIBRARY(UMFPACK_LIBRARY  NAMES libumfpack umfpack  PATHS /usr/lib /usr/local/lib/UMFPACK) 
 FIND_LIBRARY(AMD_LIBRARY      NAMES libamd amd          PATHS /usr/lib /usr/local/lib/AMD)
 
