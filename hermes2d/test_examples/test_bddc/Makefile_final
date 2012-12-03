@@ -1,0 +1,61 @@
+                                                                     
+                                                                     
+                                                                     
+                                             
+#######################################
+# MAKEFILE for this directory         #
+#######################################
+
+MPICPLUSPLUS = mpicxx
+
+# compiler flags for release builds
+RELCPPFLAGS = -g -O3
+
+# where Fortran compiler libs are when linking by C++ compiler
+FORTRAN_LIB_PATH = /usr/lib
+FORTRAN_LIB = -lmpi_f77 -lgfortran 
+
+# additional suffix to change name from Fortran source to symbol 
+# both GNU and Intel Fortran compilers add "_" to the name
+C2FDEF = -DAdd_
+
+# libraries
+LIBS = /home/lukas/hpfem/hermes/l-korous/hermes/hermes2d/libhermes2d-debug.so /home/lukas/hpfem/hermes/l-korous/hermes/hermes_common/libhermes_common-debug.so
+
+# common flags
+CPPFLAGS = $(INCLUDES) 
+
+BDDCML_DIR=/home/lukas/hpfem/bddcml
+
+include $(BDDCML_DIR)/make.inc
+CPPFLAGS += $(BDDCML_INC) -I/home/lukas/hpfem/hermes/l-korous/hermes/hermes2d/include -I/home/lukas/hpfem/hermes/l-korous/hermes/hermes_common/include
+LIBS += $(BDDCML_LINK_SEQUENCE)
+
+# for cross-compilation working well
+LIBS += -L$(FORTRAN_LIB_PATH) $(FORTRAN_LIB)
+# add preprocessor definition to produce correct names of Fortran symbols
+CPPFLAGS += $(C2FDEF)
+
+# for cleaning up
+RM = -rm -f
+
+#######################################
+# the rules
+#
+all: code
+
+# precompile
+main.o: main.cpp
+	$(MPICPLUSPLUS) $(CPPFLAGS) -c $< 
+
+definitions.o: definitions.cpp
+	$(MPICPLUSPLUS) $(CPPFLAGS) -c $< 
+
+# link the target
+code: main.o definitions.o
+	$(MPICPLUSPLUS) $(CPPFLAGS) main.o definitions.o -o $@ $(LIBS) 
+
+# clean:
+clean:
+	$(RM) code *.o
+
