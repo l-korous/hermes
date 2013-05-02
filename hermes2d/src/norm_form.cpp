@@ -35,7 +35,7 @@ namespace Hermes
     {
       Scalar result = Scalar(0);
       for (int i = 0; i < n; i++)
-        result += wt[i] * (u->val[i] * conj(v->val[i]) + u->dx[i] * conj(v->dx[i]) + u->dy[i] * conj(v->dy[i]));
+        result += wt[i] * ((u->val[i] * conj(v->val[i])) + (u->dx[i] * conj(v->dx[i])) + (u->dy[i] * conj(v->dy[i])));
       return result;
     }
 

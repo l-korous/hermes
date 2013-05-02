@@ -208,6 +208,9 @@ namespace Hermes
       if(cache->get(current_state->rep, current_state->rep_subidx, current_state->rep_i, this->current_cache_record))
       {
         if(this->report_cache_hits_and_misses)
+          assert(0);
+
+        if(this->report_cache_hits_and_misses)
           cache_record_found++;
 
         bool reinit = false;

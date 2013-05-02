@@ -77,7 +77,6 @@ namespace Hermes
       double get_total_error_squared() const;
       double get_total_norm_squared() const;
 
-    protected:
       /// State querying helpers.
       virtual bool isOkay() const;
       inline std::string getClassName() const { return "ErrorCalculator"; }

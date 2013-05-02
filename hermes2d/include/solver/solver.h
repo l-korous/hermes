@@ -112,8 +112,9 @@ namespace Hermes
       bool constant_jacobian;
 
       /// Jacobian is ready to be reused if desirable.
+    public:
       bool jacobian_reusable;
-      
+    protected:
       ///< FE problem being solved.
       DiscreteProblem<Scalar>* dp;
 

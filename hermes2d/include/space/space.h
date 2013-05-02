@@ -395,7 +395,9 @@ namespace Hermes
       };
 
       NodeData* ndata;    ///< node data table
+      public:
       ElementData* edata; ///< element data table
+      protected:
       int nsize, ndata_allocated; ///< number of items in ndata, allocated space
       int esize;
 
