@@ -19,8 +19,6 @@ public:
   /// Decide if the refinement at hand will be carried out.
   bool add_refinement(ErrorCalculator<double>* error_calculator, double processed_error_squared, double max_error_squared, int element_inspected_i)
   {
-    if(element_inspected_i < 3)
-      return true;
     ErrorCalculator<double>::ElementReference& element_reference = error_calculator->element_references[element_inspected_i];
     if(processed_error_squared < (THRESHOLD*THRESHOLD) * error_calculator->errors_squared_sum)
       return true;
@@ -39,7 +37,7 @@ const CandList CAND_LIST = H2D_HP_ISO;
 // Maximum allowed level of hanging nodes.
 const int MESH_REGULARITY = 2;
 // Error measurement type.
-const CalculatedErrorType errorType = RelativeErrorToGlobalNorm;
+const CalculatedErrorType errorType = RelativeErrorToElementNorm;
 
 const double AMPLITUDE = 1.00;
 const double FREQUENCY = 1000;
@@ -87,7 +85,7 @@ void output(Hermes::vector<MeshFunctionSharedPtr<double> > slns, SpaceSharedPtr<
 {
   //viewS.set_min_max_range(-AMPLITUDE, AMPLITUDE);
   // viewS.show(slns[0]);
-  viewSR.show(rslns[0]);
+  viewSR.show(rslns[1]);
   //oview.show(space_value);
   oviewR.show(rspace_value);
   // oview.wait_for_keypress();
@@ -180,7 +178,7 @@ class MyErrorCalculator : public ErrorCalculator<double>
       double result = 0;
       for (int i = 0; i < n; i++)
         result += wt[i] * ((u->val[i] * conj(v->val[i])) + (u->dx[i] * conj(v->dx[i])) + (u->dy[i] * conj(v->dy[i])));
-      return result * e->area;
+      return result;
     }
   };
 
@@ -260,6 +258,7 @@ int main(int argc, char* argv[])
   Hermes::Hermes2D::LinearSolver<double> linear_solver(&wf, spaces);
   //linear_solver.set_do_not_use_cache();
   linear_solver.set_jacobian_constant();
+  linear_solver.set_UMFPACK_output(true, true);
 
   // Adaptivity.
   MyErrorCalculator error_calculator(errorType);
@@ -332,6 +331,11 @@ int main(int argc, char* argv[])
       try
       {
         linear_solver.solve();
+        
+        double facSize = linear_solver.get_UMFPACK_reporting_data(Solver<double>::FactorizationSize);
+        double memSize = linear_solver.get_UMFPACK_reporting_data(Solver<double>::PeakMemoryUsage);
+        double flops = linear_solver.get_UMFPACK_reporting_data(Solver<double>::Flops);
+        
         linear_solver.set_report_cache_hits_and_misses(false);
       
         Solution<double>::vector_to_solutions(linear_solver.get_sln_vector(), rspaces, rslns);

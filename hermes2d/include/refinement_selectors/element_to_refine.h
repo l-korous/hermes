@@ -47,7 +47,7 @@ namespace Hermes
 
       /// Assignment operator.
       ElementToRefine& operator=(const ElementToRefine& orig);
-    private:
+    //private:
       int id; ///< An ID of the element.
       int comp; ///< An index of the component.
       int split; ///< Proposed refinement. Possible values are defined in the enum ::RefinementType.
