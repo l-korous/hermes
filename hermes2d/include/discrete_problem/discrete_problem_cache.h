@@ -123,7 +123,7 @@ namespace Hermes
       int recordCount;
 
       /// Starting size of the recordTable.
-      static const int DEFAULT_SIZE = 1e4;
+      static const int DEFAULT_SIZE = 2e5;
       /// Average number of subelements.
       static const int GUESS_NUMBER_OF_SUBELEMENTS = 32;
       /// Starting size of the hashTable.
