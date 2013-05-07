@@ -8,10 +8,10 @@ using namespace Hermes::Hermes2D::RefinementSelectors;
 // Initial polynomial degree of mesh elements.
 const int P_INIT = 1;
 // Initial number of uniform refinements.
-const int INIT_REF_NUM = 1;
+const int INIT_REF_NUM = 0;
 const int INIT_REF_NUM_BDY = 2;
 // This is a quantitative parameter of Adaptivity.
-const double THRESHOLD = 0.25;
+const double THRESHOLD = 0.2;
 // This is a stopping criterion for Adaptivity.
 class CustomAdaptStoppingCriterion : public AdaptivityStoppingCriterion<double>
 {
@@ -25,7 +25,7 @@ public:
     else
     {
       ErrorCalculator<double>::ElementReference& element_reference_previous = error_calculator->element_references[element_inspected_i - 1];
-      if(*(element_reference.error) / *(element_reference_previous.error) > 0.75)
+      if(*(element_reference.error) / *(element_reference_previous.error) > 0.9)
         return true;
     }
     return false;
@@ -33,14 +33,14 @@ public:
 } stoppingCriterion;
 
 // Predefined list of element refinement candidates.
-const CandList CAND_LIST = H2D_HP_ISO;
+const CandList CAND_LIST = H2D_HP_ANISO;
 // Maximum allowed level of hanging nodes.
-const int MESH_REGULARITY = 2;
+const int MESH_REGULARITY = -1;
 // Error measurement type.
-const CalculatedErrorType errorType = RelativeErrorToElementNorm;
+const CalculatedErrorType errorType = RelativeErrorToGlobalNorm;
 
 const double AMPLITUDE = 1.00;
-const double FREQUENCY = 1000;
+const double FREQUENCY = 800;
 const double TIME_STEPS_PER_FREQUENCY = 50;
 
 double time_step = 1 / (FREQUENCY * TIME_STEPS_PER_FREQUENCY);
@@ -52,24 +52,22 @@ void calculate_time_step(int iteration)
 }
 
 // Derefinement time_step
-const int derefinement_period = 10;
+const int derefinement_period = 250 * TIME_STEPS_PER_FREQUENCY / FREQUENCY;
 
 // Stopping criterion for adaptivity.
-double REFINEMENT_THRESHOLD(double time, double norm)
+double REFINEMENT_THRESHOLD(int iteration)
 {
-  double max = 50.0;
+  double max = 30.0;
+  double min = 1.0;
 
-  if(time > (time_step * (TIME_STEPS_PER_FREQUENCY )) && (time < time_step * (TIME_STEPS_PER_FREQUENCY + 2)))
+  if((iteration > TIME_STEPS_PER_FREQUENCY - 2) && (iteration < TIME_STEPS_PER_FREQUENCY))
   {
     std::cout << "\tCurrent refinement threshold: " << max << std::endl;
     return max;
   }
 
-  double min = 5.0;
-  
-  double ratio = std::pow((TIME_STEPS_PER_FREQUENCY - std::min(time / time_step, TIME_STEPS_PER_FREQUENCY)) / TIME_STEPS_PER_FREQUENCY, 2.0);
-  
-  double toReturn = ratio * (max - min) + min;
+  double ratio = std::min(1., (iteration / (TIME_STEPS_PER_FREQUENCY)));
+  double toReturn = max + (min - max) * ratio;
   
   std::cout << "\tCurrent refinement threshold: " << toReturn << std::endl;
   return toReturn;
@@ -178,7 +176,7 @@ class MyErrorCalculator : public ErrorCalculator<double>
       double result = 0;
       for (int i = 0; i < n; i++)
         result += wt[i] * ((u->val[i] * conj(v->val[i])) + (u->dx[i] * conj(v->dx[i])) + (u->dy[i] * conj(v->dy[i])));
-      return result;
+      return result * e->area;
     }
   };
 
@@ -258,7 +256,7 @@ int main(int argc, char* argv[])
   Hermes::Hermes2D::LinearSolver<double> linear_solver(&wf, spaces);
   //linear_solver.set_do_not_use_cache();
   linear_solver.set_jacobian_constant();
-  linear_solver.set_UMFPACK_output(true, true);
+  // linear_solver.set_UMFPACK_output(true, true);
 
   // Adaptivity.
   MyErrorCalculator error_calculator(errorType);
@@ -363,7 +361,7 @@ int main(int argc, char* argv[])
       logger.info("\tTotal error: %g%%.", err_est_rel);
 
       // We are above the error.
-      if(err_est_rel < REFINEMENT_THRESHOLD(time, error_calculator.get_total_norm_squared()))
+      if(err_est_rel < REFINEMENT_THRESHOLD(iteration))
         break;
       
       {
