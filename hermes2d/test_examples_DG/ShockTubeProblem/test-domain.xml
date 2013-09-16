@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mesh:mesh xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:mesh="XMLMesh"
+  xmlns:element="XMLMesh"
+  xsi:schemaLocation="XMLMesh ../../xml_schemas/mesh_h2d_xml.xsd">
+  <variables>
+    <var name="a" value="0.5" />
+    <var name="2a" value="1.0" />
+    <var name="b" value="1" />
+    <var name="2b" value="2" />
+    <var name="3b" value="3" />
+  </variables>
+
+  <vertices>
+    <v x="b" y="0" i="0"/>
+    <v x="2b" y="0" i="1"/>
+    <v x="3b" y="a" i="2"/>
+    <v x="3b" y="2a" i="3"/>
+    <v x="2b" y="2a" i="4"/>
+    <v x="b" y="2a" i="5"/>
+    <v x="0" y="2a" i="6"/>
+    <v x="b" y="a" i="7"/>
+    <v x="2b" y="a" i="8"/>
+  </vertices>
+
+  <elements>
+    <mesh:t v1="7" v2="5" v3="6" m="a" />
+    <mesh:q v1="7" v2="8" v3="4" v4="5" m="a" />
+    <mesh:q v1="8" v2="2" v3="3" v4="4" m="a" />
+    <mesh:q v1="0" v2="1" v3="8" v4="7" m="a" />
+    <mesh:t v1="1" v2="2" v3="8" m="a" />
+  </elements>
+
+  <edges>
+    <ed v1="0" v2="1" m="a" />
+    <ed v1="1" v2="2" m="a" />
+    <ed v1="2" v2="3" m="a" />
+    <ed v1="3" v2="4" m="a" />
+    <ed v1="4" v2="5" m="a" />
+    <ed v1="5" v2="6" m="a" />
+    <ed v1="6" v2="7" m="a" />
+    <ed v1="7" v2="0" m="a" />
+  </edges>
+</mesh:mesh>

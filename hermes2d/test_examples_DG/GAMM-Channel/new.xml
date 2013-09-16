@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mesh:mesh xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:mesh="XMLMesh"
+  xmlns:element="XMLMesh"
+  xsi:schemaLocation="XMLMesh ../../xml_schemas/mesh_h2d_xml.xsd">
+  <vertices>
+    <v x="0" y="0" i="0"/>
+    <v x=".5" y="0" i="1"/>
+    <v x="1.5" y="0" i="2"/>
+    <v x="2" y="0" i="3"/>
+    <v x="2" y=".5" i="4"/>
+    <v x="2" y="1" i="5"/>
+    <v x="1.5" y="1" i="6"/>
+    <v x=".5" y="1" i="7"/>
+    <v x="0" y="1" i="8"/>
+    <v x="0" y=".5" i="9"/>
+    <v x=".5" y=".5" i="10"/>
+    <v x="1.5" y=".5" i="11"/>
+  </vertices>
+
+  <elements>
+    <mesh:q v1="0" v2="1" v3="10" v4="9" m="a" />
+    <mesh:q v1="1" v2="2" v3="11" v4="10" m="a" />
+    <mesh:q v1="2" v2="3" v3="4" v4="11" m="a" />
+    <mesh:q v1="9" v2="10" v3="7" v4="8" m="a" />
+    <mesh:q v1="10" v2="11" v3="6" v4="7" m="a" />
+    <mesh:q v1="11" v2="4" v3="5" v4="6" m="a" />
+  </elements>
+
+  <edges>
+    <ed v1="0" v2="1" m="Bottom" />
+    <ed v1="1" v2="2" m="Bottom" />
+    <ed v1="2" v2="3" m="Bottom" />
+    
+    <ed v1="3" v2="4" m="Outlet" />
+    <ed v1="4" v2="5" m="Outlet" />
+    
+    <ed v1="5" v2="6" m="Top" />
+    <ed v1="6" v2="7" m="Top" />
+    <ed v1="7" v2="8" m="Top" />
+    
+    <ed v1="8" v2="9" m="Inlet" />
+    <ed v1="9" v2="0" m="Inlet" />
+  </edges>
+
+  <curves>
+    <arc v1="1" v2="2" angle="-45" />
+  </curves>
+</mesh:mesh>
