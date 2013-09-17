@@ -3,6 +3,7 @@
 
 typedef double (*scalar_product_with_advection_direction)(double x, double y, double vx, double vy);
 extern scalar_product_with_advection_direction advection_term;
+extern bool only_x_der;
 
 #pragma region Time derivative forms
 
@@ -327,13 +328,16 @@ class CustomMatrixFormVolDiffusion : public MatrixFormVol<double>
 public:
   CustomMatrixFormVolDiffusion(int i, int j, double diffusivity) : MatrixFormVol<double>(i, j), diffusivity(diffusivity) {}
 
-
   double value(int n, double *wt, Func<double> *u_ext[], Func<double> *u, 
     Func<double> *v, Geom<double> *e, Func<double>  **ext) const                  
   {
     double result = 0.;
     for (int i = 0; i < n; i++)
-      result += wt[i] * (u->dx[i] * v->dx[i] + u->dy[i] * v->dy[i]);
+      result += wt[i] * (u->dx[i] * v->dx[i]);
+    if(!only_x_der)
+      for (int i = 0; i < n; i++)
+        result += wt[i] * (u->dy[i] * v->dy[i]);
+
     return result * wf->get_current_time_step() * diffusivity;
   }
 
@@ -363,7 +367,10 @@ public:
   {
     double result = 0.;
     for (int i = 0; i < n; i++)
-      result += wt[i] * (ext[ext_i]->dx[i] * v->dx[i] + ext[ext_i]->dy[i] * v->dy[i]);
+      result += wt[i] * (ext[ext_i]->dx[i] * v->dx[i]);
+    if(!only_x_der)
+      for (int i = 0; i < n; i++)
+        result += wt[i] * (ext[ext_i]->dy[i] * v->dy[i]);
     return multiplier * result * wf->get_current_time_step() * diffusivity;
   }
 
@@ -400,20 +407,90 @@ public:
     }
 
     double result = 0.;
-    double* dx = (u->fn_central == NULL) ? u->dx_neighbor : u->dx;
-    double* dy = (u->fn_central == NULL) ? u->dy_neighbor : u->dy;
-    double* dx_test = (v->fn_central == NULL) ? v->dx_neighbor : v->dx;
-    double* dy_test = (v->fn_central == NULL) ? v->dy_neighbor : v->dy;
 
-    for (int i = 0; i < n; i++) 
+    switch(u->fn_central != NULL)
     {
-      double jump_v = (v->fn_central == NULL ? -v->val_neighbor[i] : v->val[i]);
-      result -= 0.5 * wt[i] * (dx[i] * e->nx[i] + dy[i] * e->ny[i]) * jump_v;
-      double jump_u = (u->fn_central == NULL ? -u->val_neighbor[i] : u->val[i]);
-      result -= 0.5 * wt[i] * (dx_test[i] * e->nx[i] + dy_test[i] * e->ny[i]) * jump_u * s;
+    case true:
+      switch(v->fn_central != NULL)
+      {
+      case true:
+        // 0, 0
+        for (int i = 0; i < n; i++) 
+        {
+          double jump_u = u->val[i];
+          double jump_v = v->val[i];
 
-      result += wt[i] * jump_v * jump_u * sigma;
+          result -= 0.5 * wt[i] * (u->dx[i] * e->nx[i]) * jump_v;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (u->dy[i] * e->ny[i]) * jump_v;
+
+          result -= 0.5 * wt[i] * (v->dx[i] * e->nx[i]) * jump_u * s;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (v->dy[i] * e->ny[i]) * jump_u * s;
+
+          result += wt[i] * jump_v * jump_u * sigma;
+        }
+        break;
+      case false:
+        // 1, 0
+        for (int i = 0; i < n; i++) 
+        {
+          double jump_u = u->val[i];
+          double jump_v = -v->val_neighbor[i];
+
+          result -= 0.5 * wt[i] * (u->dx[i] * e->nx[i]) * jump_v;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (u->dy[i] * e->ny[i]) * jump_v;
+
+          result -= 0.5 * wt[i] * (v->dx_neighbor[i] * e->nx[i]) * jump_u * s;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (v->dy_neighbor[i] * e->ny[i]) * jump_u * s;
+
+          result += wt[i] * jump_v * jump_u * sigma;
+        }
+      }
+      break;
+    case false:
+      switch(v->fn_central != NULL)
+      {
+      case true:
+        // 0, 1
+        for (int i = 0; i < n; i++) 
+        {
+          double jump_u = -u->val_neighbor[i];
+          double jump_v = v->val[i];
+
+          result -= 0.5 * wt[i] * (u->dx_neighbor[i] * e->nx[i]) * jump_v;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (u->dy_neighbor[i] * e->ny[i]) * jump_v;
+
+          result -= 0.5 * wt[i] * (v->dx[i] * e->nx[i]) * jump_u * s;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (v->dy[i] * e->ny[i]) * jump_u * s;
+
+          result += wt[i] * jump_v * jump_u * sigma;
+        }
+        break;
+      case false:
+        // 1, 1
+        for (int i = 0; i < n; i++) 
+        {
+          double jump_u = -u->val_neighbor[i];
+          double jump_v = -v->val_neighbor[i];
+
+          result -= 0.5 * wt[i] * (u->dx_neighbor[i] * e->nx[i]) * jump_v;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (u->dy_neighbor[i] * e->ny[i]) * jump_v;
+
+          result -= 0.5 * wt[i] * (v->dx_neighbor[i] * e->nx[i]) * jump_u * s;
+          if(!only_x_der)
+            result -= 0.5 * wt[i] * (v->dy_neighbor[i] * e->ny[i]) * jump_u * s;
+
+          result += wt[i] * jump_v * jump_u * sigma;
+        }
+      }
     }
+
     return result * wf->get_current_time_step() * diffusivity;
   }
 
@@ -447,10 +524,10 @@ public:
     for (int i = 0; i < n; i++) 
     {
       double dx = .5 * (ext[this->ext_i]->dx[i] + ext[this->ext_i]->dx_neighbor[i]);
-      double dy = .5 * (ext[this->ext_i]->dy[i] + ext[this->ext_i]->dy_neighbor[i]);
+      double dy = only_x_der ? 0. : .5 * (ext[this->ext_i]->dy[i] + ext[this->ext_i]->dy_neighbor[i]);
       result -= wt[i] * (dx * e->nx[i] + dy * e->ny[i]) * v->val[i];
       double dx_test = .5 * v->dx[i];
-      double dy_test = .5 * v->dy[i];
+      double dy_test = only_x_der ? 0. : .5 * v->dy[i];
       double jump = ext[this->ext_i]->val[i] - ext[this->ext_i]->val_neighbor[i];
       result -= wt[i] * (dx_test * e->nx[i] + dy_test * e->ny[i]) * jump * s;
       result += wt[i] * sigma * jump * v->val[i];
@@ -489,10 +566,10 @@ public:
     for (int i = 0; i < n; i++) 
     {
       double dx = .5 * ext[this->ext_i]->dx_neighbor[i];
-      double dy = .5 * ext[this->ext_i]->dy_neighbor[i];
+      double dy = only_x_der ? 0. : .5 * ext[this->ext_i]->dy_neighbor[i];
       result -= wt[i] * (dx * e->nx[i] + dy * e->ny[i]) * v->val[i];
       double dx_test = .5 * v->dx[i];
-      double dy_test = .5 * v->dy[i];
+      double dy_test = only_x_der ? 0. : .5 * v->dy[i];
       double jump = - ext[this->ext_i]->val_neighbor[i];
       result -= wt[i] * (dx_test * e->nx[i] + dy_test * e->ny[i]) * jump * s;
       result += wt[i] * sigma * jump * v->val[i];
@@ -533,10 +610,10 @@ public:
     for (int i = 0; i < n; i++) 
     {
       double dx = u->dx[i];
-      double dy = u->dy[i];
+      double dy = only_x_der ? 0. : u->dy[i];
       result -= wt[i] * (dx * e->nx[i] + dy * e->ny[i]) * v->val[i];
       double dx_test = v->dx[i];
-      double dy_test = v->dy[i];
+      double dy_test = only_x_der ? 0. : v->dy[i];
       result -= wt[i] * (dx_test * e->nx[i] + dy_test * e->ny[i]) * u->val[i] * s;
       result += wt[i] * sigma * v->val[i] * u->val[i];
     }
@@ -573,9 +650,9 @@ public:
     for (int i = 0; i < n; i++) 
     {
       double dx = ext[this->ext_bnd]->dx[i];
-      double dy = ext[this->ext_bnd]->dy[i];
+      double dy = only_x_der ? 0. : ext[this->ext_bnd]->dy[i];
       double dx_test = v->dx[i];
-      double dy_test = v->dy[i];
+      double dy_test = only_x_der ? 0. : v->dy[i];
       if(add_grad_u)
         result -= wt[i] * (dx * e->nx[i] + dy * e->ny[i]) * v->val[i];
       result -= wt[i] * (dx_test * e->nx[i] + dy_test * e->ny[i]) * ext[this->ext_bnd]->val[i] * s;
@@ -599,6 +676,40 @@ public:
   double diffusivity;
   double s, sigma, multiplier;
   bool add_grad_u;
+};
+
+class CustomVectorFormSurfDiffusionNeumann : public VectorFormSurf<double>
+{
+public:
+  CustomVectorFormSurfDiffusionNeumann(int i, int ext_bnd, std::string outlet, double diffusivity, MeshFunctionSharedPtr<double> exact_solution) : 
+    VectorFormSurf<double>(i), ext_bnd(ext_bnd), diffusivity(diffusivity)
+  {
+    this->set_area(outlet);
+    this->set_ext(exact_solution);
+  };
+
+  double value(int n, double *wt, Func<double> **u_ext, Func<double> *v,
+    Geom<double> *e, Func<double> **ext) const
+  {
+    double result = 0.;
+    for (int i = 0; i < n; i++) 
+      result += wt[i] * v->val[i] * (e->nx[i] * ext[this->ext_bnd]->dx[i] + e->ny[i] * ext[this->ext_bnd]->dy[i]);
+    return diffusivity * result * wf->get_current_time_step();
+  }
+
+  Ord ord(int n, double *wt, Func<Ord> **u_ext, Func<Ord> *v,
+    Geom<Ord> *e, Func<Ord> **ext) const
+  {
+    return Ord(20);
+  }
+
+  VectorFormSurf<double>* clone() const
+  {
+    return new CustomVectorFormSurfDiffusionNeumann(*this);
+  }
+
+  int ext_bnd;
+  double diffusivity;
 };
 #pragma endregion
 #endif

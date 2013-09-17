@@ -1411,7 +1411,7 @@ void limitVelocityAndEnergy(Hermes::vector<SpaceSharedPtr<double> > spaces, Limi
   }
 }
 
-FeistauerJumpDetector::FeistauerJumpDetector(SpaceSharedPtr<double> space, double* solution_vector) : PostProcessing::Limiter<double>(space, solution_vector), wf(1)
+FeistauerJumpDetector::FeistauerJumpDetector(SpaceSharedPtr<double> space, double* solution_vector) : PostProcessing::Limiter<double>(space, solution_vector)
 {
   this->init();
 }
@@ -1507,7 +1507,9 @@ void FeistauerJumpDetector::assemble_one_neighbor(NeighborSearch<double>& ns, in
       ns.central_transformations[neighbor_i]->apply_on(this->limited_solutions[component].get());
   }
 
-  int order = DiscreteProblemDGAssembler<double>::dg_order;
+  /// \todo
+  //int order = DiscreteProblemDGAssembler<double>::dg_order;
+  int order = 20;
   ns.set_quad_order(order);
 
   RefMap* refmap = this->limited_solutions[0]->get_refmap();

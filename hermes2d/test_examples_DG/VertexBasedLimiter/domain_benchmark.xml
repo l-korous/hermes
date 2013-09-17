@@ -6,10 +6,10 @@
   
   <vertices>
   <!-- Contains all examples how it is possible to write a zero. -->
-    <v x="0" y="0" i="0"/>
-    <v x="1.5" y="0" i="1"/>
-    <v x="1.5" y="0.5" i="2"/>
-    <v x="0" y="0.5" i="3"/>
+    <v x="0.0" y="0" i="0"/>
+    <v x="1.2" y="0" i="1"/>
+    <v x="1.2" y="0.5" i="2"/>
+    <v x="0.0" y="0.5" i="3"/>
   </vertices>
 
   <elements>

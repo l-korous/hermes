@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 1;
-const int initialRefinementsCount = 4;
+const int initialRefinementsCount = 3;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -16,8 +16,8 @@ double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
 double diffusivity = 1e-2;
-double s = 0;
-double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 1. : (s == 1 ? 10. : 0.));
+double s = -1;
+double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 1.0 : (s == 1 ? 10. : 0.));
 
 int main(int argc, char* argv[])
 {
@@ -79,6 +79,7 @@ int main(int argc, char* argv[])
   case Benchmark:
     mloader.load("domain_benchmark.xml", mesh);
     mesh->refine_all_elements(2);
+    mesh->refine_all_elements(2);
     for(int i = 0; i < initialRefinementsCount; i++)
       mesh->refine_all_elements();
     break;
@@ -116,7 +117,7 @@ int main(int argc, char* argv[])
     initial_condition = new ZeroSolution<double>(mesh);
     initial_condition_der = new ZeroSolution<double>(mesh);
     previous_initial_condition = new ZeroSolution<double>(mesh);
-    exact_sln = new ExactSolutionBenchmark(mesh, diffusivity);
+    exact_sln = new ExactSolutionBenchmark2(mesh, diffusivity);
     break;
   }
   
@@ -130,6 +131,7 @@ int main(int argc, char* argv[])
   // Visualization.
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));
   ScalarView exact_view("Exact solution", new WinGeom(610, 0, 600, 350));
+  exact_view.show(exact_solution);
 
   if(algorithm == Multiscale)
   {

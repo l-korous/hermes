@@ -6,10 +6,10 @@ static void calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1
   SpaceSharedPtr<double> mspace(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   wf.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(fn_1, fn_2));
   DiscreteProblem<double> dp(&wf, mspace);
-  UMFPackVector<double> vector;
+  SimpleVector<double> vector;
   dp.assemble(&vector);
   double result = 0.;
-  for(int i = 0; i < vector.length(); i++)
+  for(int i = 0; i < vector.get_size(); i++)
     result += vector.get(i);
   std::cout << "L2 Error: " << std::sqrt(result) << std::endl;
 }
@@ -17,12 +17,11 @@ static void calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1
 static void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
-  ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 720, 600, 350));
+  ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 0, 600, 350));
 
   // Exact solver
-  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma);
+  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma, exact_solution);
   weakform_exact.set_current_time_step(time_step);
-  weakform_exact.set_ext(initial_sln);
   LinearSolver<double> solver_exact(&weakform_exact, space);
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
@@ -46,7 +45,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   OGProjection<double>::project_global(const_space, previous_mean_values, previous_mean_values);
   OGProjection<double>::project_global(space, previous_derivatives, previous_derivatives);
   
-  MeshFunctionSharedPtr<double>initial_sln(new InitialConditionBenchmark(mesh, diffusivity));
+  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
 
   ImplicitWeakForm weakform_implicit(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma);
   weakform_implicit.set_current_time_step(time_step_length);
@@ -58,7 +57,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   LinearSolver<double> solver_explicit(&weakform_explicit, space);
   
   solve_exact(solvedExample, full_space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
-  exact_view->show(exact_solution);
 
   double current_time = 0.;
   int number_of_steps = (time_interval_length - current_time) / time_step_length;
@@ -85,15 +83,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     
     calc_l2_error(mesh, solution, exact_solution);
 
-    /*
-    {
-    Linearizer lin;
-    char* filename = new char[100];
-    sprintf(filename, "Sln-%i.vtk", time_step);
-    lin.save_solution_vtk(solution, filename, "sln");
-    delete [] filename;
-    }
-    */
     current_time += time_step_length;
   }
 }
@@ -110,7 +99,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int ndofs_0 = space_0->get_num_dofs();
 
   // Previous iteration solution
-  MeshFunctionSharedPtr<double>initial_sln(new InitialConditionBenchmark(mesh, diffusivity));
+  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
   ScalarView coarse_solution_view("Coarse solution", new WinGeom(0, 360, 600, 350));
 
   // 1 - solver
@@ -125,14 +114,14 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   weakform_residual_1.set_current_time_step(time_step_length);
   weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, initial_sln));
   DiscreteProblem<double> dp(&weakform_residual_1, space_1);
-  Algebra::UMFPackVector<double> vec;
+  Algebra::SimpleVector<double> vec;
 
   // 0 - solver
   FullImplicitWeakForm weakform_0(solvedExample, 1, true, "Inlet", "Outlet", diffusivity);
   weakform_0.set_current_time_step(time_step_length);
   weakform_0.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, initial_sln));
   DiscreteProblem<double> dp_0(&weakform_0, space_0);
-  UMFPackMatrix<double> matrix;
+  CSCMatrix<double> matrix;
   
   // Exact solver.
   solve_exact(solvedExample, space_1, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
@@ -180,7 +169,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     
     //// Solve for increment
     dp_0.assemble(&matrix);
-    UMFPackLinearMatrixSolver<double> solver_0(&matrix, (Algebra::UMFPackVector<double>*)cut_off_linear_part(&vec, space_0, space_1));
+    UMFPackLinearMatrixSolver<double> solver_0(&matrix, (Algebra::SimpleVector<double>*)cut_off_linear_part(&vec, space_0, space_1));
     solver_0.solve();
     //// Add
     for(int k = 0; k < ndofs_0; k++)
@@ -222,19 +211,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     }
 
     // Error & exact solution display.
-    //((ExactSolutionMovingPeak*)(exact_solution.get()))->set_current_time(current_time + (M_PI / 2.));
-    exact_view->show(exact_solution);
     calc_l2_error(mesh, previous_sln, exact_solution);
 
-    /*
-    {
-    Linearizer lin;
-    char* filename = new char[100];
-    sprintf(filename, "Sln-%i.vtk", time_step);
-    lin.save_solution_vtk(solution, filename, "sln");
-    delete [] filename;
-    }
-    */
     current_time += time_step_length;
   }
 }

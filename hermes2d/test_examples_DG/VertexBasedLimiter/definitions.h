@@ -47,7 +47,7 @@ public:
 class ExactWeakForm : public WeakForm<double>
 {
 public:
-  ExactWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", std::string outlet = "", double diffusivity = 0., double s = 0., double sigma = 0., bool matrix_only = false);
+  ExactWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", std::string outlet = "", double diffusivity = 0., double s = 0., double sigma = 0., MeshFunctionSharedPtr<double> exact_solution = NULL);
 };
 
 class FullImplicitWeakForm : public WeakForm<double>
@@ -155,6 +155,20 @@ public:
   MeshFunction<double>* clone() const;
   double diffusivity;
 };
+class InitialConditionBenchmark2 : public ExactSolutionScalar<double>
+{
+public:
+  InitialConditionBenchmark2(MeshSharedPtr mesh, double diffusivity) : ExactSolutionScalar<double>(mesh), diffusivity(diffusivity){};
+  
+  virtual void derivatives (double x, double y, double& dx, double& dy) const ;
+
+  virtual double value (double x, double y) const;
+
+  virtual Ord ord(double x, double y) const ;
+
+  MeshFunction<double>* clone() const;
+  double diffusivity;
+};
 
 class ExactSolutionBenchmark : public ExactSolutionScalar<double>
 {
@@ -168,6 +182,23 @@ public:
   virtual Ord ord(double x, double y) const ;
 
   MeshFunction<double>* clone() const;
+  double diffusivity;
+};
+
+class ExactSolutionBenchmark2 : public ExactSolutionScalar<double>
+{
+public:
+  ExactSolutionBenchmark2(MeshSharedPtr mesh, double diffusivity) : ExactSolutionScalar<double>(mesh), diffusivity(diffusivity), l(7. * std::sqrt(2.) / 300.) {};
+  
+  virtual void derivatives (double x, double y, double& dx, double& dy) const ;
+
+  virtual double value (double x, double y) const;
+
+  virtual Ord ord(double x, double y) const ;
+
+  MeshFunction<double>* clone() const;
+  double l;
+  double sigma(double y) const;
   double diffusivity;
 };
 
