@@ -2,7 +2,7 @@
 
 static double exact_solver_error;
 
-static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2)
+static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
   ErrorWeakForm wf;
   SpaceSharedPtr<double> mspace(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
@@ -13,29 +13,29 @@ static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn
   double result = 0.;
   for(int i = 0; i < vector.get_size(); i++)
     result += vector.get(i);
-  std::cout << "L2 Error: " << std::sqrt(result) << std::endl;
+  logger.info("L2 Error: %d.", std::sqrt(result));
   return std::sqrt(result);
 }
 
-void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step)
+void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
   ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 0, 600, 350));
 
   // Exact solver
-  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma, exact_solution);
+  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma, initial_sln);
   weakform_exact.set_current_time_step(time_step);
   LinearSolver<double> solver_exact(&weakform_exact, space);
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
-  exact_solver_error = calc_l2_error(space->get_mesh(), exact_solver_sln, exact_solution);
+  exact_solver_error = calc_l2_error(space->get_mesh(), exact_solver_sln, exact_solution, logger);
   exact_solver_view->show(exact_solver_sln);
 }
 
 void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_mean_values, 
                               MeshFunctionSharedPtr<double> previous_derivatives, double diffusivity, double s, double sigma, double time_step_length, 
                               double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                              ScalarView* solution_view, ScalarView* exact_view)
+                              ScalarView* solution_view, ScalarView* exact_view, Hermes::Mixins::Loggable& logger)
 {
   // Standard L2 space.
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor(false)));
@@ -62,7 +62,8 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   int number_of_steps = (time_interval_length - current_time) / time_step_length;
   for(int time_step = 0; time_step <= number_of_steps; time_step++)
   { 
-    std::cout << "Iteration " << time_step << std::endl;
+    logger.info("Iteration %i.", time_step);
+
     solver_implicit.solve();
     Solution<double>::vector_to_solution(solver_implicit.get_sln_vector(), const_space, previous_mean_values);
 
@@ -81,7 +82,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     solution_view->show(solution);
     
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution) < 1e-8)
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution, logger)) < 1e-8)
       break;
 
     current_time += time_step_length;
@@ -91,7 +92,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
                  double diffusivity, double time_step_length, 
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma)
+                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
 {
   // Spaces
   SpaceSharedPtr<double> space_1(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -132,7 +133,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   double current_time = 0.;
   for(int step = 0;; step++)
   { 
-    std::cout << "V-cycle " << step << std::endl;
+    logger.info("V-cycle %i.", step);
 
     // 1 - pre-smoothing on the 1st level.
     for(int iteration_1 = 1; iteration_1 < 5; iteration_1++)
@@ -154,7 +155,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // Residual check.
       dp.assemble(&vec);
       double residual_norm = Hermes2D::get_l2_norm(&vec);
-      std::cout << "\tIteration - (P = 1-pre): " << iteration_1 << ", residual norm: " << residual_norm << std::endl;
+      logger.info("\tIteration - (P = 1-pre): %i, residual norm: %d.", iteration_1, residual_norm);
       if(iteration_1 == 1)
         initial_residual_norm = residual_norm;
       else if(residual_norm / initial_residual_norm < 1e-1)
@@ -201,7 +202,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // Residual check.
       dp.assemble(&vec);
       double residual_norm = Hermes2D::get_l2_norm(&vec);
-      std::cout << "\tIteration - (P = 1-post): " << iteration_1 << ", residual norm: " << residual_norm << std::endl;
+      logger.info("\tIteration - (P = 1-post): %i, residual norm: %d.", iteration_1, residual_norm);
       if(iteration_1 == 1)
         initial_residual_norm = residual_norm;
       else if(residual_norm / initial_residual_norm < 1e-1)
@@ -209,7 +210,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     }
 
     // Error & exact solution display.
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution) < 1e-8)
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution, logger)) < 1e-8)
       break;
 
     current_time += time_step_length;

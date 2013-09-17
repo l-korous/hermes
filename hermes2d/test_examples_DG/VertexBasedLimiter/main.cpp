@@ -137,26 +137,26 @@ int main(int argc, char* argv[])
   
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
-  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
+  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, exact_solution, time_step_length, logger);
 
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
   //if(algorithm == Multiscale)
   {
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
-    time_interval_length, solution, exact_solution, &solution_view, &exact_view, &logger);
+    time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger);
   }
   cpu_time.tick();
-  logger.info("Multiscale total: %s", cpu_time.last_str());
+  logger.info("Multiscale total: %s", cpu_time.last_str().c_str());
   cpu_time.tick();
   
   //if(algorithm == pMultigrid)
   {
     p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution, diffusivity, time_step_length, time_interval_length, 
-      solution, exact_solution, &solution_view, &exact_view, s, sigma, &logger);
+      solution, exact_solution, &solution_view, &exact_view, s, sigma, logger);
   }
   cpu_time.tick();
-  logger.info("Multiscale total: %s", cpu_time.last_str());
+  logger.info("Multiscale total: %s", cpu_time.last_str().c_str());
 
   solution_view.wait_for_close();
   return 0;
