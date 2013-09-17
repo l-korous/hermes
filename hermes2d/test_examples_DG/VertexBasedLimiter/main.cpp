@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 1;
-const int initialRefinementsCount = 3;
+const int initialRefinementsCount = 7;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -24,7 +24,9 @@ int main(int argc, char* argv[])
   if(argc > 1)
     diffusivity = atof(argv[1]);
   // test();
-  Hermes::Mixins::Loggable::set_static_logFile_name("logfile.h2d");
+  Hermes::Mixins::Loggable logger(true);
+  logger.set_logFile_name("logfile.h2d");
+  
   HermesCommonApi.set_integral_param_value(numThreads, 8);
 
   switch(solvedExample)
@@ -132,17 +134,29 @@ int main(int argc, char* argv[])
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));
   ScalarView exact_view("Exact solution", new WinGeom(610, 0, 600, 350));
   exact_view.show(exact_solution);
+  
+  // Exact solver solution
+  SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
+  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
 
-  if(algorithm == Multiscale)
+  Hermes::Mixins::TimeMeasurable cpu_time;
+  cpu_time.tick();
+  //if(algorithm == Multiscale)
   {
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
-    time_interval_length, solution, exact_solution, &solution_view, &exact_view);
+    time_interval_length, solution, exact_solution, &solution_view, &exact_view, &logger);
   }
-  if(algorithm == pMultigrid)
+  cpu_time.tick();
+  logger.info("Multiscale total: %s", cpu_time.last_str());
+  cpu_time.tick();
+  
+  //if(algorithm == pMultigrid)
   {
     p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution, diffusivity, time_step_length, time_interval_length, 
-      solution, exact_solution, &solution_view, &exact_view, s, sigma);
+      solution, exact_solution, &solution_view, &exact_view, s, sigma, &logger);
   }
+  cpu_time.tick();
+  logger.info("Multiscale total: %s", cpu_time.last_str());
 
   solution_view.wait_for_close();
   return 0;

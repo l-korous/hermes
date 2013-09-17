@@ -1,6 +1,8 @@
 #include "algorithms.h"
 
-static void calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2)
+static double exact_solver_error;
+
+static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2)
 {
   ErrorWeakForm wf;
   SpaceSharedPtr<double> mspace(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
@@ -12,9 +14,10 @@ static void calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1
   for(int i = 0; i < vector.get_size(); i++)
     result += vector.get(i);
   std::cout << "L2 Error: " << std::sqrt(result) << std::endl;
+  return std::sqrt(result);
 }
 
-static void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step)
+void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
   ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 0, 600, 350));
@@ -25,8 +28,7 @@ static void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> spac
   LinearSolver<double> solver_exact(&weakform_exact, space);
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
-  //OGProjection<double>::project_global(space, exact_solution, exact_solver_sln);
-  calc_l2_error(space->get_mesh(), exact_solver_sln, exact_solution);
+  exact_solver_error = calc_l2_error(space->get_mesh(), exact_solver_sln, exact_solution);
   exact_solver_view->show(exact_solver_sln);
 }
 
@@ -56,8 +58,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   LinearSolver<double> solver_implicit(&weakform_implicit, const_space);
   LinearSolver<double> solver_explicit(&weakform_explicit, space);
   
-  solve_exact(solvedExample, full_space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
-
   double current_time = 0.;
   int number_of_steps = (time_interval_length - current_time) / time_step_length;
   for(int time_step = 0; time_step <= number_of_steps; time_step++)
@@ -81,7 +81,8 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     solution_view->show(solution);
     
-    calc_l2_error(mesh, solution, exact_solution);
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution) < 1e-8)
+      break;
 
     current_time += time_step_length;
   }
@@ -123,9 +124,6 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   DiscreteProblem<double> dp_0(&weakform_0, space_0);
   CSCMatrix<double> matrix;
   
-  // Exact solver.
-  solve_exact(solvedExample, space_1, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length);
-
   // Utils.
   double* slnv_1 = new double[ndofs_1];
   double* slnv_0 = new double[ndofs_0];
@@ -211,7 +209,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     }
 
     // Error & exact solution display.
-    calc_l2_error(mesh, previous_sln, exact_solution);
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution) < 1e-8)
+      break;
 
     current_time += time_step_length;
   }
