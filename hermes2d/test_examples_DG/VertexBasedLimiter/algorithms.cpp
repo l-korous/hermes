@@ -1,6 +1,7 @@
 #include "algorithms.h"
 
 static double exact_solver_error;
+static const double wrt_exact_solver_tolerance = 1e-6;
 
 static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
@@ -13,14 +14,14 @@ static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn
   double result = 0.;
   for(int i = 0; i < vector.get_size(); i++)
     result += vector.get(i);
-  logger.info("L2 Error: %d.", std::sqrt(result));
+  logger.info("L2 Error: %f.", std::sqrt(result));
   return std::sqrt(result);
 }
 
 void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
-  ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 0, 600, 350));
+  ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 360, 600, 350));
 
   // Exact solver
   ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma, initial_sln);
@@ -58,17 +59,24 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   LinearSolver<double> solver_implicit(&weakform_implicit, const_space);
   LinearSolver<double> solver_explicit(&weakform_explicit, space);
   
+  int num_coarse = 0;
+  int num_fine = 0;
+  int iterations = 0;
+  
   double current_time = 0.;
   int number_of_steps = (time_interval_length - current_time) / time_step_length;
   for(int time_step = 0; time_step <= number_of_steps; time_step++)
   { 
+    iterations++;
     logger.info("Iteration %i.", time_step);
-
+    num_coarse++;
+    
     solver_implicit.solve();
     Solution<double>::vector_to_solution(solver_implicit.get_sln_vector(), const_space, previous_mean_values);
 
     if(polynomialDegree)
     {
+      num_fine++;
       solver_explicit.solve();
       double* merged_sln = merge_slns(solver_implicit.get_sln_vector(), const_space,solver_explicit.get_sln_vector(), space, full_space);
       Solution<double>::vector_to_solution(solver_explicit.get_sln_vector(), space, previous_derivatives);
@@ -82,11 +90,15 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     solution_view->show(solution);
     
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution, logger)) < 1e-8)
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution, logger)) < wrt_exact_solver_tolerance)
       break;
 
     current_time += time_step_length;
   }
+  
+  logger.info("Iterations: %i", iterations);
+  logger.info("Coarse systems solved: %i", num_coarse);
+  logger.info("Fine systems solved: %i", num_fine);
 }
 
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
@@ -102,7 +114,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
   // Previous iteration solution
   MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
-  ScalarView coarse_solution_view("Coarse solution", new WinGeom(0, 360, 600, 350));
+  //ScalarView coarse_solution_view("Coarse solution", new WinGeom(0, 360, 600, 350));
 
   // 1 - solver
   SmoothingWeakForm weakform_1(solvedExample, true, 1, true, "Inlet", "Outlet", diffusivity, s, sigma);
@@ -129,15 +141,24 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   double* slnv_1 = new double[ndofs_1];
   double* slnv_0 = new double[ndofs_0];
   double initial_residual_norm;
+  
+  // Reports.
+  int num_coarse = 0;
+  int num_fine = 0;
+  int v_cycles = 0;
+  
     
   double current_time = 0.;
-  for(int step = 0;; step++)
+  for(int step = 1;; step++)
   { 
     logger.info("V-cycle %i.", step);
+    v_cycles++;
 
     // 1 - pre-smoothing on the 1st level.
     for(int iteration_1 = 1; iteration_1 < 5; iteration_1++)
     {
+      num_fine++;
+      
       // Store the previous solution.
       OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
       
@@ -155,7 +176,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // Residual check.
       dp.assemble(&vec);
       double residual_norm = Hermes2D::get_l2_norm(&vec);
-      logger.info("\tIteration - (P = 1-pre): %i, residual norm: %d.", iteration_1, residual_norm);
+      logger.info("\tIteration - (P = 1-pre): %i, residual norm: %f.", iteration_1, residual_norm);
       if(iteration_1 == 1)
         initial_residual_norm = residual_norm;
       else if(residual_norm / initial_residual_norm < 1e-1)
@@ -165,7 +186,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // 2 - Solve the problem on the coarse level exactly
     //// Store
     OGProjection<double>::project_global(space_0, previous_sln, slnv_0);
-    
+    num_coarse++;
     //// Solve for increment
     dp_0.assemble(&matrix);
     UMFPackLinearMatrixSolver<double> solver_0(&matrix, (Algebra::SimpleVector<double>*)cut_off_linear_part(&vec, space_0, space_1));
@@ -175,7 +196,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       slnv_0[k] += solver_0.get_sln_vector()[k];
     Solution<double>::vector_to_solution(slnv_0, space_0, previous_sln);
     //// Show
-    coarse_solution_view.show(previous_sln);
+    ////coarse_solution_view.show(previous_sln);
     
     // 3 - Prolongation and replacement
     double* solution_vector = merge_slns(slnv_0, space_0, slnv_1, space_1, space_1);
@@ -185,6 +206,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // 4 - post-smoothing steps
     for(int iteration_1 = 1; iteration_1 < 5; iteration_1++)
     {
+      num_fine++;
       // Store the previous solution.
       OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
       
@@ -202,7 +224,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // Residual check.
       dp.assemble(&vec);
       double residual_norm = Hermes2D::get_l2_norm(&vec);
-      logger.info("\tIteration - (P = 1-post): %i, residual norm: %d.", iteration_1, residual_norm);
+      logger.info("\tIteration - (P = 1-post): %i, residual norm: %f.", iteration_1, residual_norm);
       if(iteration_1 == 1)
         initial_residual_norm = residual_norm;
       else if(residual_norm / initial_residual_norm < 1e-1)
@@ -210,9 +232,12 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     }
 
     // Error & exact solution display.
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution, logger)) < 1e-8)
+    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
       break;
 
     current_time += time_step_length;
   }
+  logger.info("V-cycles: %i", v_cycles);
+  logger.info("Coarse systems solved: %i", num_coarse);
+  logger.info("Fine systems solved: %i", num_fine);
 }

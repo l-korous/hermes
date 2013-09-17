@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 1;
-const int initialRefinementsCount = 7;
+int initialRefinementsCount = 3;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -22,10 +22,12 @@ double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 1.0 
 int main(int argc, char* argv[])
 {
   if(argc > 1)
-    diffusivity = atof(argv[1]);
+    initialRefinementsCount = atoi(argv[1]);
   // test();
   Hermes::Mixins::Loggable logger(true);
-  logger.set_logFile_name("logfile.h2d");
+  std::stringstream ss;
+  ss << "logfile_" << initialRefinementsCount << ".h2d";
+  logger.set_logFile_name(ss.str());
   
   HermesCommonApi.set_integral_param_value(numThreads, 8);
 
@@ -130,6 +132,8 @@ int main(int argc, char* argv[])
   MeshFunctionSharedPtr<double> previous_derivatives(initial_condition_der);
   MeshFunctionSharedPtr<double> exact_solution(exact_sln);
 
+  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
+
   // Visualization.
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));
   ScalarView exact_view("Exact solution", new WinGeom(610, 0, 600, 350));
@@ -137,7 +141,7 @@ int main(int argc, char* argv[])
   
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
-  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, exact_solution, time_step_length, logger);
+  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger);
 
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
