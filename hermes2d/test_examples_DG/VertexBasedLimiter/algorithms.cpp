@@ -3,19 +3,20 @@
 static double exact_solver_error;
 static const double wrt_exact_solver_tolerance = 1e-6;
 
-static double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
+double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
   ErrorWeakForm wf;
   SpaceSharedPtr<double> mspace(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   wf.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(fn_1, fn_2));
-  DiscreteProblem<double> dp(&wf, mspace);
+  DiscreteProblem<double>* dp = new DiscreteProblem<double>(&wf, mspace);
   SimpleVector<double> vector;
-  dp.assemble(&vector);
+  dp->assemble(&vector);
   double result = 0.;
   for(int i = 0; i < vector.get_size(); i++)
     result += vector.get(i);
-  logger.info("L2 Error: %f.", std::sqrt(result));
-  return std::sqrt(result);
+  result = std::sqrt(result);
+  logger.info("L2 Error: %g.", result);
+  return result;
 }
 
 void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
@@ -59,16 +60,15 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   LinearSolver<double> solver_implicit(&weakform_implicit, const_space);
   LinearSolver<double> solver_explicit(&weakform_explicit, space);
   
+  // Reporting.
   int num_coarse = 0;
   int num_fine = 0;
   int iterations = 0;
   
-  double current_time = 0.;
-  int number_of_steps = (time_interval_length - current_time) / time_step_length;
-  for(int time_step = 0; time_step <= number_of_steps; time_step++)
+  for(int iteration = 1;; iteration++)
   { 
     iterations++;
-    logger.info("Iteration %i.", time_step);
+    logger.info("Iteration %i.", iteration);
     num_coarse++;
     
     solver_implicit.solve();
@@ -90,10 +90,10 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     solution_view->show(solution);
     
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, solution, exact_solution, logger)) < wrt_exact_solver_tolerance)
-      break;
+    double err = calc_l2_error(mesh, solution, exact_solution, logger);
 
-    current_time += time_step_length;
+    if(std::abs(exact_solver_error - err) < wrt_exact_solver_tolerance)
+      break;
   }
   
   logger.info("Iterations: %i", iterations);
@@ -147,15 +147,13 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int num_fine = 0;
   int v_cycles = 0;
   
-    
-  double current_time = 0.;
   for(int step = 1;; step++)
   { 
     logger.info("V-cycle %i.", step);
     v_cycles++;
 
     // 1 - pre-smoothing on the 1st level.
-    for(int iteration_1 = 1; iteration_1 < 5; iteration_1++)
+    for(int iteration_1 = 1; iteration_1 <= (step < 7 ? 4 : 2); iteration_1++)
     {
       num_fine++;
       
@@ -204,7 +202,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     delete [] solution_vector;
 
     // 4 - post-smoothing steps
-    for(int iteration_1 = 1; iteration_1 < 5; iteration_1++)
+    for(int iteration_1 = 1; iteration_1 <= (step < 7 ? 5 : 2); iteration_1++)
     {
       num_fine++;
       // Store the previous solution.
@@ -234,8 +232,6 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // Error & exact solution display.
     if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
       break;
-
-    current_time += time_step_length;
   }
   logger.info("V-cycles: %i", v_cycles);
   logger.info("Coarse systems solved: %i", num_coarse);
