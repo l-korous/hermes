@@ -564,7 +564,7 @@ MeshFunction<double>* ExactSolutionBenchmark2::clone() const
   return new ExactSolutionBenchmark2(this->mesh, this->diffusivity);
 }
 
-double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_coarse, double* solution_vector_fine, SpaceSharedPtr<double> space_fine, SpaceSharedPtr<double> space_full)
+double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_coarse, double* solution_vector_fine, SpaceSharedPtr<double> space_fine, SpaceSharedPtr<double> space_full, bool add)
 {
   double* target = new double[space_full->get_num_dofs()];
   Element *e;
@@ -580,6 +580,11 @@ double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_
 
     for(int i = 0; i < al_coarse.cnt; i++)
       target[al_target.dof[i]] = solution_vector_coarse[al_coarse.dof[i]];
+    
+    if(add)
+      for(int i = 0; i < al_coarse.cnt; i++)
+        target[al_target.dof[i]] += solution_vector_fine[al_fine.dof[i]];
+
     for(int i = al_coarse.cnt; i < al_target.cnt; i++)
       target[al_target.dof[i]] = solution_vector_fine[al_fine.dof[i + shift]];
   }

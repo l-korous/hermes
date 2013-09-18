@@ -103,7 +103,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
 static int smoothing_steps_count(int level, bool pre)
 {
-  return 5;
+  return 3;
 }
 
 static double residual_drop(int level, bool pre)
@@ -163,7 +163,12 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   double* slnv_1 = new double[ndofs_1];
   double* slnv_0 = new double[ndofs_0];
   double initial_residual_norm;
-
+  
+  MeshFunctionSharedPtr<double> residual(new Solution<double>());
+  double* projected_residual = new double[space_1->get_num_dofs()];
+  Algebra::SimpleVector<double> projected_residual_vector(space_1->get_num_dofs());
+  UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, &projected_residual_vector);
+  
   // Reports.
   int num_coarse = 0;
   int num_2 = 0;
@@ -214,15 +219,17 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
       // Store the previous solution.
       OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
-      if(polynomialDegree > 1 && iteration == -1)
+      if(polynomialDegree > 1 && iteration == 1)
       {
         if(step == 1)
           solver_dp_1.assemble(&matrix_1);
-        UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(&vec_2, space_1, space_2));
+        Solution<double>::vector_to_solution(&vec_2, space_2, residual);
+        OGProjection<double>::project_global(space_1, residual, projected_residual);
+        projected_residual_vector.zero();
+        projected_residual_vector.add_vector(projected_residual);
         local_solver_1.solve();
         for(int k = 0; k < ndofs_1; k++)
           slnv_1[k] += local_solver_1.get_sln_vector()[k];
-
       }
       else
       {
@@ -282,6 +289,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
 
       solver_1.solve();
+      
       for(int k = 0; k < ndofs_1; k++)
         slnv_1[k] += solver_1.get_sln_vector()[k];
 
@@ -305,13 +313,25 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     }
 #pragma endregion
 
-    solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2);
-    Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
-    delete [] solution_vector;
 
 #pragma region 0 - highest level
     if(polynomialDegree > 1)
     {
+      // 4 - Prolongation and replacement
+      MeshFunctionSharedPtr<double> u_2(new Solution<double>());
+      Solution<double>::vector_to_solution(slnv_2, space_2, u_2);
+      double* projected_u2 = new double[space_1->get_num_dofs()];
+      OGProjection<double>::project_global(space_1, u_2, projected_u2);
+      for(int i = 0; i < space_1->get_num_dofs(); i++)
+      {
+        slnv_1[i] -= projected_u2[i];
+        slnv_1[i] *= .25;
+      }
+      
+      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2, true);
+      Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
+      delete [] solution_vector;
+    
       for(int iteration = 1; iteration <= smoothing_steps_count(2, false); iteration++)
       {
         num_2++;
@@ -324,6 +344,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
           slnv_2[k] += solver_2.get_sln_vector()[k];
         Solution<double>::vector_to_solution(slnv_2, space_2, previous_sln);
 
+        // Show
+        solution_view->show(previous_sln);
+      
         // Residual check.
         dp_2.assemble(&vec_2);
         if(use_residual_drop_condition)
