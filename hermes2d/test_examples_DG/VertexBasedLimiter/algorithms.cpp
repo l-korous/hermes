@@ -323,12 +323,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       double* projected_u2 = new double[space_1->get_num_dofs()];
       OGProjection<double>::project_global(space_1, u_2, projected_u2);
       for(int i = 0; i < space_1->get_num_dofs(); i++)
-      {
         slnv_1[i] -= projected_u2[i];
-        slnv_1[i] *= .25;
-      }
-      
-      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2, true);
+      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2, false);
       Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
       delete [] solution_vector;
     

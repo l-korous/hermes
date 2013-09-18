@@ -15,9 +15,9 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-3;
+double diffusivity = 3e-3;
 double s = -1;
-double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 1.0 : (s == 1 ? 10. : 0.));
+double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
 int main(int argc, char* argv[])
 {
