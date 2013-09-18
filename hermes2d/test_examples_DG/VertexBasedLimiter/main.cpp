@@ -2,9 +2,9 @@
 #include "../euler_util.h"
 #include "algorithms.h"
 
-const int polynomialDegree = 1;
-int initialRefinementsCount = 6;
-const Algorithm algorithm = Multiscale;
+const int polynomialDegree = 2;
+int initialRefinementsCount = 4;
+const Algorithm algorithm = pMultigrid;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
 
@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-2;
+double diffusivity = 1e-3;
 double s = -1;
 double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
@@ -151,18 +151,18 @@ int main(int argc, char* argv[])
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
-  //if(algorithm == Multiscale)
+  if(algorithm == Multiscale)
   {
     logger.info("Multiscale solver");
-    //multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
-    //time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger);
+    multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
+    time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger);
   }
   cpu_time.tick();
   logger.info("Multiscale total: %s", cpu_time.last_str().c_str());
   logger.info("\n");
   
   cpu_time.tick();
-  //if(algorithm == pMultigrid)
+  if(algorithm == pMultigrid)
   {
     logger.info("p-Multigrid solver");
     p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution, diffusivity, time_step_length, time_interval_length, 
