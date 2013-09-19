@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 2;
-int initialRefinementsCount = 5;
+int initialRefinementsCount = 4;
 const Algorithm algorithm = pMultigrid;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-12;
+double diffusivity = 1e-3;
 double s = -1;
 double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
     time_interval_length = (2. * M_PI) + (time_step_length / 10.);
     break;
   case Benchmark:
-    time_step_length = 1e-8;
+    time_step_length = 1e0;
     time_interval_length = 1000. + time_step_length / 10.;
     break;
   }
@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
   exact_view.show(exact_solution);
   
   // Exact solver solution
-  SpaceSharedPtr<double> space(new L2Space<double>(mesh, 1, new L2ShapesetTaylor));
+  SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   logger.info("Exact solver");
   solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger);
   logger.info("\n");

@@ -31,7 +31,6 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
   exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
-  OGProjection<double>::project_global(space, exact_solution, exact_solver_sln);
   exact_solver_view->show(exact_solver_sln);
 }
 
@@ -129,7 +128,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   SmoothingWeakForm weakform_1(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma, false);
   SmoothingWeakForm weakform_2(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_1.set_current_time_step(time_step_length);
-  weakform_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(exact_solution, exact_solution));
+  weakform_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   weakform_2.set_current_time_step(time_step_length);
   weakform_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   LinearSolver<double> solver_1(&weakform_1, space_1);
@@ -145,7 +144,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   SmoothingWeakFormResidual weakform_residual_1(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
   SmoothingWeakFormResidual weakform_residual_2(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_residual_1.set_current_time_step(time_step_length);
-  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(exact_solution, exact_solution));
+  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   weakform_residual_2.set_current_time_step(time_step_length);
   weakform_residual_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
 
