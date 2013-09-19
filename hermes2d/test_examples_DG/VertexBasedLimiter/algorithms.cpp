@@ -109,12 +109,26 @@ static double residual_drop(int level, bool pre)
   return 1e-1;
 }
 
+static bool use_residual_drop_condition = true;
+static bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, double* sln_vector, double* residual, Hermes::Mixins::Loggable& logger, int iteration, bool presmoothing)
+{
+  mat->multiply_with_vector(sln_vector, residual, true);
+  for(int i = 0; i < mat->get_size(); i++)
+    residual[i] -= vec->get(i);
+  
+  if(use_residual_drop_condition)
+  {
+    double residual_norm = Hermes2D::get_l2_norm(residual, mat->get_size());
+    logger.info("\tIteration: %i, residual norm: %f.", iteration, residual_norm);
+  }
+
+  return false;
+}
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
                  double diffusivity, double time_step_length, 
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
                  ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
 {
-  bool use_residual_drop_condition = true;
 
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -139,19 +153,20 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   solver_1.set_jacobian_constant();
   solver_2.set_verbose_output(false);
   solver_2.set_jacobian_constant();
-
+  ScalarView coarse_solution_view;
   // 1 - Residual measurement.
-  SmoothingWeakFormResidual weakform_residual_1(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
-  SmoothingWeakFormResidual weakform_residual_2(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
-  weakform_residual_1.set_current_time_step(time_step_length);
-  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-  weakform_residual_2.set_current_time_step(time_step_length);
-  weakform_residual_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-
-  DiscreteProblem<double> dp_1(&weakform_residual_1, space_1);
-  Algebra::SimpleVector<double> vec_1;
-  DiscreteProblem<double> dp_2(&weakform_residual_2, space_2);
-  Algebra::SimpleVector<double> vec_2;
+  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution);
+  weakform_exact.set_current_time_step(time_step_length);
+  DiscreteProblem<double> dp_1(&weakform_exact, space_1);
+  SimpleVector<double> vec_1;
+  CSCMatrix<double> mat_1;
+  dp_1.assemble(&mat_1, &vec_1);
+  double* residual_1 = new double[ndofs_1];
+  DiscreteProblem<double> dp_2(&weakform_exact, space_2);
+  SimpleVector<double> vec_2;
+  CSCMatrix<double> mat_2;
+  dp_2.assemble(&mat_2, &vec_2);
+  double* residual_2 = new double[ndofs_2];
 
   // 0 - solver
   FullImplicitWeakForm weakform_0(solvedExample, 1, true, "Inlet", diffusivity);
@@ -198,16 +213,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
         
         // Residual check.
-        dp_2.assemble(&vec_2);
-        if(use_residual_drop_condition)
-        {
-          double residual_norm = Hermes2D::get_l2_norm(&vec_2);
-          logger.info("\tIteration - (P = 2-pre): %i, residual norm: %f.", iteration, residual_norm);
-          if(iteration == 1)
-            initial_residual_norm = residual_norm;
-          else if(residual_norm / initial_residual_norm < residual_drop(2, true))
-            break;
-        }
+        residual_condition(&mat_2, &vec_2, slnv_2, residual_2, logger, iteration, true);
       }
     }
 #pragma endregion
@@ -226,7 +232,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       {
         if(step == 1)
           solver_dp_1.assemble(&matrix_1);
-        UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(&vec_2, space_1, space_2));
+        UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(residual_2, space_1, space_2));
         local_solver_1.solve();
         for(int k = 0; k < ndofs_1; k++)
         {
@@ -250,16 +256,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       solution_view->show(previous_sln);
 
       // Residual check.
-      dp_1.assemble(&vec_1);
-      if(use_residual_drop_condition)
-      {
-        double residual_norm = Hermes2D::get_l2_norm(&vec_1);
-        logger.info("\tIteration - (P = 1-pre): %i, residual norm: %f.", iteration, residual_norm);
-        if(iteration == 1)
-          initial_residual_norm = residual_norm;
-        else if(residual_norm / initial_residual_norm < residual_drop(1, true))
-          break;
-      }
+      residual_condition(&mat_1, &vec_1, slnv_1, residual_1, logger, iteration, false);
     }
 #pragma endregion
 
@@ -300,16 +297,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       solution_view->show(previous_sln);
 
       // Residual check.
-      dp_1.assemble(&vec_1);
-      if(use_residual_drop_condition)
-      {
-        double residual_norm = Hermes2D::get_l2_norm(&vec_1);
-        logger.info("\tIteration - (P = 1-post): %i, residual norm: %f.", iteration, residual_norm);
-        if(iteration == 1)
-          initial_residual_norm = residual_norm;
-        else if(residual_norm / initial_residual_norm < residual_drop(1, false))
-          break;
-      }
+      residual_condition(&mat_1, &vec_1, slnv_1, residual_1, logger, iteration, false);
     }
 #pragma endregion
 
@@ -341,16 +329,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
       
         // Residual check.
-        dp_2.assemble(&vec_2);
-        if(use_residual_drop_condition)
-        {
-          double residual_norm = Hermes2D::get_l2_norm(&vec_2);
-          logger.info("\tIteration - (P = 2-post): %i, residual norm: %f.", iteration, residual_norm);
-          if(iteration == 1)
-            initial_residual_norm = residual_norm;
-          else if(residual_norm / initial_residual_norm < residual_drop(2, false))
-            break;
-        }
+        residual_condition(&mat_2, &vec_2, slnv_2, residual_2, logger, iteration, false);
       }
     }
 #pragma endregion

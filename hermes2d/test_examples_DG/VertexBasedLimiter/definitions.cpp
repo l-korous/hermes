@@ -594,7 +594,7 @@ double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_
   return target;
 }
 
-Hermes::Algebra::Vector<double>* cut_off_linear_part(Hermes::Algebra::Vector<double>* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+Hermes::Algebra::Vector<double>* cut_off_linear_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
 {
   SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
   Element *e;
@@ -604,12 +604,12 @@ Hermes::Algebra::Vector<double>* cut_off_linear_part(Hermes::Algebra::Vector<dou
     space_coarse->get_element_assembly_list(e, &al_coarse);
     space_fine->get_element_assembly_list(e, &al_fine);
 
-    vector->set(al_coarse.dof[0],  src_vector->get(al_fine.dof[0]));
+    vector->set(al_coarse.dof[0],  src_vector[al_fine.dof[0]]);
   }
   return vector;
 }
 
-Hermes::Algebra::Vector<double>* cut_off_quadratic_part(Hermes::Algebra::Vector<double>* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+Hermes::Algebra::Vector<double>* cut_off_quadratic_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
 {
   SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
   Element *e;
@@ -619,9 +619,9 @@ Hermes::Algebra::Vector<double>* cut_off_quadratic_part(Hermes::Algebra::Vector<
     space_coarse->get_element_assembly_list(e, &al_coarse);
     space_fine->get_element_assembly_list(e, &al_fine);
 
-    vector->set(al_coarse.dof[0],src_vector->get(al_fine.dof[0]));
-    vector->set(al_coarse.dof[1],src_vector->get(al_fine.dof[1]));
-    vector->set(al_coarse.dof[2],src_vector->get(al_fine.dof[2]));
+    vector->set(al_coarse.dof[0],src_vector[al_fine.dof[0]]);
+    vector->set(al_coarse.dof[1],src_vector[al_fine.dof[1]]);
+    vector->set(al_coarse.dof[2],src_vector[al_fine.dof[2]]);
   }
   return vector;
 }

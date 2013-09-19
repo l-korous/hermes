@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 2;
-int initialRefinementsCount = 4;
+int initialRefinementsCount = 3;
 const Algorithm algorithm = pMultigrid;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
