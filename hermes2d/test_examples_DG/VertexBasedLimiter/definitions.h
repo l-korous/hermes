@@ -35,13 +35,13 @@ extern Ord upwind_flux(Ord u_cent, Ord u_neib, double a_dot_n);
 class SmoothingWeakForm  : public WeakForm<double>     
 {
 public:
-  SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep = 1, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
+  SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep = 1, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0., bool add_rhs = true);
 };
 
 class SmoothingWeakFormResidual  : public WeakForm<double>     
 {
 public:
-  SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep = 1, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
+  SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep = 1, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0., bool add_rhs = true);
 };
 
 class ExactWeakForm : public WeakForm<double>

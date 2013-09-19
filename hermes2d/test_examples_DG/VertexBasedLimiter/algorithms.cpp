@@ -31,6 +31,7 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
   exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
+  OGProjection<double>::project_global(space, exact_solution, exact_solver_sln);
   exact_solver_view->show(exact_solver_sln);
 }
 
@@ -125,12 +126,15 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int ndofs_0 = space_0->get_num_dofs();
 
   // 1 - solver
-  SmoothingWeakForm weakform_fine(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
-  weakform_fine.set_current_time_step(time_step_length);
-  weakform_fine.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-  LinearSolver<double> solver_1(&weakform_fine, space_1);
-  LinearSolver<double> solver_2(&weakform_fine, space_2);
-  DiscreteProblem<double> solver_dp_1(&weakform_fine, space_1);
+  SmoothingWeakForm weakform_1(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma, false);
+  SmoothingWeakForm weakform_2(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
+  weakform_1.set_current_time_step(time_step_length);
+  weakform_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(exact_solution, exact_solution));
+  weakform_2.set_current_time_step(time_step_length);
+  weakform_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
+  LinearSolver<double> solver_1(&weakform_1, space_1);
+  LinearSolver<double> solver_2(&weakform_2, space_2);
+  DiscreteProblem<double> solver_dp_1(&weakform_1, space_1);
   CSCMatrix<double> matrix_1;
   solver_1.set_verbose_output(false);
   solver_1.set_jacobian_constant();
@@ -139,11 +143,15 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
   // 1 - Residual measurement.
   SmoothingWeakFormResidual weakform_residual_1(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
+  SmoothingWeakFormResidual weakform_residual_2(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_residual_1.set_current_time_step(time_step_length);
-  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
+  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(exact_solution, exact_solution));
+  weakform_residual_2.set_current_time_step(time_step_length);
+  weakform_residual_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
+
   DiscreteProblem<double> dp_1(&weakform_residual_1, space_1);
   Algebra::SimpleVector<double> vec_1;
-  DiscreteProblem<double> dp_2(&weakform_residual_1, space_2);
+  DiscreteProblem<double> dp_2(&weakform_residual_2, space_2);
   Algebra::SimpleVector<double> vec_2;
 
   // 0 - solver
@@ -156,12 +164,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   // Utils.
   double* slnv_2 = new double[ndofs_2];
   double* slnv_1 = new double[ndofs_1];
+  double* slnv_1_increment = new double[ndofs_1];
   double* slnv_0 = new double[ndofs_0];
   double initial_residual_norm;
-  
-  MeshFunctionSharedPtr<double> residual(new Solution<double>());
-  double* projected_residual = new double[space_1->get_num_dofs()];
-  Algebra::SimpleVector<double> projected_residual_vector(space_1->get_num_dofs());
   
   // Reports.
   int num_coarse = 0;
@@ -175,19 +180,21 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     v_cycles++;
 
 #pragma region 0 - highest level
+    // Store the previous solution.
+    OGProjection<double>::project_global(space_2, previous_sln, slnv_2);
     if(polynomialDegree > 1)
     {
       for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
       {
         num_2++;
-        // Store the previous solution.
-        OGProjection<double>::project_global(space_2, previous_sln, slnv_2);
         // Solve for increment.
         solver_2.solve();
         // Add
         for(int k = 0; k < ndofs_2; k++)
           slnv_2[k] += solver_2.get_sln_vector()[k];
+
         Solution<double>::vector_to_solution(slnv_2, space_2, previous_sln);
+        
         // Show
         solution_view->show(previous_sln);
         
@@ -207,6 +214,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
 #pragma region 1 - intermediate level
+    // Store the previous solution.
+    memset(slnv_1_increment, 0, sizeof(double)*space_1->get_num_dofs());
+    
     for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
     {
       num_1++;
@@ -220,16 +230,21 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(&vec_2, space_1, space_2));
         local_solver_1.solve();
         for(int k = 0; k < ndofs_1; k++)
+        {
+          slnv_1_increment[k] += local_solver_1.get_sln_vector()[k];
           slnv_1[k] += local_solver_1.get_sln_vector()[k];
+        }
       }
       else
       {
         solver_1.solve();
         for(int k = 0; k < ndofs_1; k++)
+        {
+          slnv_1_increment[k] += solver_1.get_sln_vector()[k];
           slnv_1[k] += solver_1.get_sln_vector()[k];
+        }
       }
 
-      // Add
       Solution<double>::vector_to_solution(slnv_1, space_1, previous_sln);
 
       // Show
@@ -250,41 +265,36 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
 #pragma region  2 - Solve the problem on the coarse level exactly
-    //// Store
-    OGProjection<double>::project_global(space_0, previous_sln, slnv_0);
     num_coarse++;
     //// Solve for increment
     if(step == 1)
       dp_0.assemble(&matrix_0);
     UMFPackLinearMatrixSolver<double> solver_0(&matrix_0, (Algebra::SimpleVector<double>*)cut_off_linear_part(&vec_1, space_0, space_1));
     solver_0.solve();
-    //// Add
-    for(int k = 0; k < ndofs_0; k++)
-      slnv_0[k] += solver_0.get_sln_vector()[k];
-    Solution<double>::vector_to_solution(slnv_0, space_0, previous_sln);
     //// Show
     ////coarse_solution_view.show(previous_sln);
-
-    // 3 - Prolongation and replacement
-    double* solution_vector = merge_slns(slnv_0, space_0, slnv_1, space_1, space_1);
-    Solution<double>::vector_to_solution(solution_vector, space_1, previous_sln);
-    delete [] solution_vector;
 #pragma endregion
 
 #pragma region 1 - intermediate level
+    // 3 - Prolongation and replacement
+    double* solution_vector = merge_slns(solver_0.get_sln_vector(), space_0, slnv_1, space_1, space_1, true);
+    Solution<double>::vector_to_solution(solution_vector, space_1, previous_sln);
+    
+    // Store the previous solution.
+    memcpy(slnv_1, solution_vector, sizeof(double)*space_1->get_num_dofs());
+    delete [] solution_vector;
     for(int iteration = 1; iteration <= smoothing_steps_count(1, false); iteration++)
     {
       num_1++;
 
-      // Store the previous solution.
-      OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
-
       solver_1.solve();
       
       for(int k = 0; k < ndofs_1; k++)
+      {
+        slnv_1_increment[k] += solver_1.get_sln_vector()[k];
         slnv_1[k] += solver_1.get_sln_vector()[k];
+      }
 
-      // Add
       Solution<double>::vector_to_solution(slnv_1, space_1, previous_sln);
 
       // Show
@@ -311,18 +321,21 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // 4 - Prolongation and replacement
       solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2);
       Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
+      // Store the previous solution.
+      memcpy(slnv_2, solution_vector, sizeof(double)*space_2->get_num_dofs());
       delete [] solution_vector;
     
       for(int iteration = 1; iteration <= smoothing_steps_count(2, false); iteration++)
       {
         num_2++;
-        // Store the previous solution.
-        OGProjection<double>::project_global(space_2, previous_sln, slnv_2);
+       
         // Solve for increment.
         solver_2.solve();
+
         // Add
         for(int k = 0; k < ndofs_2; k++)
           slnv_2[k] += solver_2.get_sln_vector()[k];
+        
         Solution<double>::vector_to_solution(slnv_2, space_2, previous_sln);
 
         // Show

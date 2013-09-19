@@ -70,13 +70,15 @@ static void initialization(SolvedExample solvedExample)
   }
 }
 
-SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1) 
+SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, bool add_rhs) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
 
   // Matrix
   // M
   add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
+
+
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form(new CustomMatrixFormVolDiffusion(0, 0, diffusivity));
@@ -86,14 +88,13 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
   if(add_inlet)
     this->add_matrix_form_surf(new CustomMatrixFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet));
-
+  
   // RHS
   // M
   // Just for Runge-Kutta of more stages, where ext[0] and ext[1] are generally different
   //  add_vector_form(new CustomVectorFormVol(0, 1, 1.));
   //  add_vector_form(new CustomVectorFormVol(0, 0, -1.));
-    
-  // A
+    // A
   add_vector_form(new CustomVectorFormVolConvection(0, 0));
   add_vector_form(new CustomVectorFormVolDiffusion(0, 0, diffusivity));
   add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 0, true, true));
@@ -112,7 +113,7 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   }
 }
 
-SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1)
+SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, bool add_rhs) : WeakForm<double>(1)
 {
   initialization(solvedExample);
 
@@ -122,8 +123,7 @@ SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample
     this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 1, true, false));
     this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 1, diffusivity, s, sigma, inlet, false, 1.));
   }
-  
-  // A
+
   add_vector_form(new CustomVectorFormVolConvection(0, 0));
   add_vector_form(new CustomVectorFormVolDiffusion(0, 0, diffusivity));
   add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 0, true, true));
@@ -148,7 +148,7 @@ FullImplicitWeakForm::FullImplicitWeakForm(SolvedExample solvedExample, int expl
   this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
 }
 
-ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution) : WeakForm<double>(1) 
+ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
 
