@@ -5,7 +5,7 @@
 const int polynomialDegree = 2;
 int initialRefinementsCount = 4;
 const Algorithm algorithm = pMultigrid;
-const SolvedExample solvedExample = Benchmark;
+const SolvedExample solvedExample = CircularConvection;
 const EulerLimiterType limiter_type = VertexBased;
 
 bool HermesView = true;
@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 3e-3;
+double diffusivity = 1e-3;
 double s = -1;
 double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
@@ -97,6 +97,7 @@ int main(int argc, char* argv[])
   ExactSolutionScalar<double>* previous_initial_condition = NULL;
   ExactSolutionScalar<double>* initial_condition = NULL;
   ExactSolutionScalar<double>* initial_condition_der = NULL;
+  ExactSolutionScalar<double>* initial_solution = NULL;
   ExactSolutionScalar<double>* exact_sln = NULL;
   switch(solvedExample)
   {
@@ -114,6 +115,8 @@ int main(int argc, char* argv[])
     initial_condition = new ZeroSolution<double>(mesh);
     initial_condition_der = new ZeroSolution<double>(mesh);
     previous_initial_condition = new ZeroSolution<double>(mesh);
+    exact_sln = new ExactSolutionCircularConvection(mesh);
+    initial_solution = new ExactSolutionCircularConvection(mesh);
     break;
   case MovingPeak:
     initial_condition = new ExactSolutionMovingPeak(mesh, diffusivity, M_PI / 2.);
@@ -126,6 +129,7 @@ int main(int argc, char* argv[])
     initial_condition_der = new ZeroSolution<double>(mesh);
     previous_initial_condition = new ZeroSolution<double>(mesh);
     exact_sln = new ExactSolutionBenchmark2(mesh, diffusivity);
+    initial_solution = new ExactSolutionBenchmark2(mesh, diffusivity);
     break;
   }
   
@@ -135,8 +139,7 @@ int main(int argc, char* argv[])
   MeshFunctionSharedPtr<double> previous_mean_values(initial_condition);
   MeshFunctionSharedPtr<double> previous_derivatives(initial_condition_der);
   MeshFunctionSharedPtr<double> exact_solution(exact_sln);
-
-  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
+  MeshFunctionSharedPtr<double> initial_sln(initial_solution);
 
   // Visualization.
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));

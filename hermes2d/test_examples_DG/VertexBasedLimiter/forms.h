@@ -98,6 +98,35 @@ public:
   }
 };
 
+class ErrorFormVol : public VectorFormVol<double>
+{
+public:
+  ErrorFormVol() : VectorFormVol<double>(0)
+  {
+  };
+
+  double value(int n, double *wt, Func<double> **u_ext, Func<double> *v,
+    Geom<double> *e, Func<double> **ext) const
+  {
+    double result = 0.;
+    for (int i = 0; i < n; i++) 
+      result += wt[i] * (ext[0]->val[i] - ext[1]->val[i]) * (ext[0]->val[i] - ext[1]->val[i]);
+
+    return result;
+  }
+
+  Ord ord(int n, double *wt, Func<Ord> **u_ext, Func<Ord> *v,
+    Geom<Ord> *e, Func<Ord> **ext) const
+  {
+    return Ord(20);
+  }
+
+  VectorFormVol<double>* clone() const
+  {
+    return new ErrorFormVol(*this);
+  }
+};
+
 #pragma endregion
 
 #pragma region Convection forms

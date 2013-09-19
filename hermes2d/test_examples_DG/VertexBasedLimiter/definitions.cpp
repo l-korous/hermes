@@ -38,9 +38,12 @@ static double advection_term_benchmark(double x, double y, double vx, double vy)
 scalar_product_with_advection_direction advection_term;
 bool only_x_der;
 
-ErrorWeakForm::ErrorWeakForm()
+ErrorWeakForm::ErrorWeakForm(SolvedExample solvedExample)
 {
-  this->add_vector_form_surf(new ErrorFormSurf("Outlet"));
+  if(solvedExample == Benchmark)
+    this->add_vector_form_surf(new ErrorFormSurf("Outlet"));
+  else
+    this->add_vector_form(new ErrorFormVol());
 }
 
 static void initialization(SolvedExample solvedExample)
@@ -67,7 +70,7 @@ static void initialization(SolvedExample solvedExample)
   }
 }
 
-SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep, bool add_inlet, std::string inlet, std::string outlet, double diffusivity, double s, double sigma) : WeakForm<double>(1) 
+SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
 
@@ -109,7 +112,7 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   }
 }
 
-SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet, std::string outlet, double diffusivity, double s, double sigma) : WeakForm<double>(1)
+SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1)
 {
   initialization(solvedExample);
 
@@ -132,7 +135,7 @@ SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample
     this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet, true));
 }
 
-FullImplicitWeakForm::FullImplicitWeakForm(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet, std::string outlet, double diffusivity) : WeakForm<double>(1) 
+FullImplicitWeakForm::FullImplicitWeakForm(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
   
@@ -145,7 +148,7 @@ FullImplicitWeakForm::FullImplicitWeakForm(SolvedExample solvedExample, int expl
   this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
 }
 
-ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, std::string outlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution) : WeakForm<double>(1) 
+ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
 
@@ -169,7 +172,7 @@ ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::s
   }
 }
 
-ImplicitWeakForm::ImplicitWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, std::string outlet, double diffusivity, double s, double sigma) : WeakForm<double>(1)
+ImplicitWeakForm::ImplicitWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1)
 {
   initialization(solvedExample);
 
@@ -212,7 +215,7 @@ ImplicitWeakForm::ImplicitWeakForm(SolvedExample solvedExample, bool add_inlet, 
   }
 }
 
-ExplicitWeakForm::ExplicitWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, std::string outlet, double diffusivity, double s, double sigma) : WeakForm<double>(1) 
+ExplicitWeakForm::ExplicitWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
   

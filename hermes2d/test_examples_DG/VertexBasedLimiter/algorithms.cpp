@@ -3,9 +3,9 @@
 static double exact_solver_error;
 static const double wrt_exact_solver_tolerance = 1e-6;
 
-double calc_l2_error(MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
+double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
-  ErrorWeakForm wf;
+  ErrorWeakForm wf(solvedExample);
   SpaceSharedPtr<double> mspace(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   wf.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(fn_1, fn_2));
   DiscreteProblem<double>* dp = new DiscreteProblem<double>(&wf, mspace);
@@ -25,12 +25,12 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 360, 600, 350));
 
   // Exact solver
-  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma, initial_sln);
+  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", diffusivity, s, sigma, initial_sln);
   weakform_exact.set_current_time_step(time_step);
   LinearSolver<double> solver_exact(&weakform_exact, space);
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
-  exact_solver_error = calc_l2_error(space->get_mesh(), exact_solver_sln, exact_solution, logger);
+  exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
   exact_solver_view->show(exact_solver_sln);
 }
 
@@ -49,13 +49,11 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   OGProjection<double>::project_global(const_space, previous_mean_values, previous_mean_values);
   OGProjection<double>::project_global(space, previous_derivatives, previous_derivatives);
 
-  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
-
-  ImplicitWeakForm weakform_implicit(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma);
+  ImplicitWeakForm weakform_implicit(solvedExample, true, "Inlet", diffusivity, s, sigma);
   weakform_implicit.set_current_time_step(time_step_length);
-  weakform_implicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, initial_sln));
-  ExplicitWeakForm weakform_explicit(solvedExample, true, "Inlet", "Outlet", diffusivity, s, sigma);
-  weakform_explicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, initial_sln));
+  weakform_implicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, exact_solution));
+  ExplicitWeakForm weakform_explicit(solvedExample, true, "Inlet", diffusivity, s, sigma);
+  weakform_explicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, exact_solution));
   weakform_explicit.set_current_time_step(time_step_length);
   LinearSolver<double> solver_implicit(&weakform_implicit, const_space);
   LinearSolver<double> solver_explicit(&weakform_explicit, space);
@@ -90,7 +88,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     solution_view->show(solution);
 
-    double err = calc_l2_error(mesh, solution, exact_solution, logger);
+    double err = calc_l2_error(solvedExample, mesh, solution, exact_solution, logger);
 
     if(std::abs(exact_solver_error - err) < wrt_exact_solver_tolerance)
       break;
@@ -126,13 +124,10 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   SpaceSharedPtr<double> space_0(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   int ndofs_0 = space_0->get_num_dofs();
 
-  // Previous iteration solution
-  MeshFunctionSharedPtr<double>initial_sln(new ExactSolutionBenchmark2(mesh, diffusivity));
-
   // 1 - solver
-  SmoothingWeakForm weakform_fine(solvedExample, true, 1, true, "Inlet", "Outlet", diffusivity, s, sigma);
+  SmoothingWeakForm weakform_fine(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_fine.set_current_time_step(time_step_length);
-  weakform_fine.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, initial_sln));
+  weakform_fine.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   LinearSolver<double> solver_1(&weakform_fine, space_1);
   LinearSolver<double> solver_2(&weakform_fine, space_2);
   DiscreteProblem<double> solver_dp_1(&weakform_fine, space_1);
@@ -143,18 +138,18 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   solver_2.set_jacobian_constant();
 
   // 1 - Residual measurement.
-  SmoothingWeakFormResidual weakform_residual_1(solvedExample, 1, true, "Inlet", "Outlet", diffusivity, s, sigma);
+  SmoothingWeakFormResidual weakform_residual_1(solvedExample, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_residual_1.set_current_time_step(time_step_length);
-  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, initial_sln));
+  weakform_residual_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   DiscreteProblem<double> dp_1(&weakform_residual_1, space_1);
   Algebra::SimpleVector<double> vec_1;
   DiscreteProblem<double> dp_2(&weakform_residual_1, space_2);
   Algebra::SimpleVector<double> vec_2;
 
   // 0 - solver
-  FullImplicitWeakForm weakform_0(solvedExample, 1, true, "Inlet", "Outlet", diffusivity);
+  FullImplicitWeakForm weakform_0(solvedExample, 1, true, "Inlet", diffusivity);
   weakform_0.set_current_time_step(time_step_length);
-  weakform_0.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, initial_sln));
+  weakform_0.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   DiscreteProblem<double> dp_0(&weakform_0, space_0);
   CSCMatrix<double> matrix_0;
 
@@ -167,7 +162,6 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   MeshFunctionSharedPtr<double> residual(new Solution<double>());
   double* projected_residual = new double[space_1->get_num_dofs()];
   Algebra::SimpleVector<double> projected_residual_vector(space_1->get_num_dofs());
-  UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, &projected_residual_vector);
   
   // Reports.
   int num_coarse = 0;
@@ -223,10 +217,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       {
         if(step == 1)
           solver_dp_1.assemble(&matrix_1);
-        Solution<double>::vector_to_solution(&vec_2, space_2, residual);
-        OGProjection<double>::project_global(space_1, residual, projected_residual);
-        projected_residual_vector.zero();
-        projected_residual_vector.add_vector(projected_residual);
+        UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(&vec_2, space_1, space_2));
         local_solver_1.solve();
         for(int k = 0; k < ndofs_1; k++)
           slnv_1[k] += local_solver_1.get_sln_vector()[k];
@@ -318,13 +309,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     if(polynomialDegree > 1)
     {
       // 4 - Prolongation and replacement
-      MeshFunctionSharedPtr<double> u_2(new Solution<double>());
-      Solution<double>::vector_to_solution(slnv_2, space_2, u_2);
-      double* projected_u2 = new double[space_1->get_num_dofs()];
-      OGProjection<double>::project_global(space_1, u_2, projected_u2);
-      for(int i = 0; i < space_1->get_num_dofs(); i++)
-        slnv_1[i] -= projected_u2[i];
-      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2, false);
+      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2);
       Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
       delete [] solution_vector;
     
@@ -359,7 +344,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
     // Error & exact solution display.
-    if(std::abs(exact_solver_error - calc_l2_error(mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
+    if(std::abs(exact_solver_error - calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
       break;
   }
   logger.info("V-cycles: %i", v_cycles);
