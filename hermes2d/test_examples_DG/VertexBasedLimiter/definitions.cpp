@@ -78,7 +78,6 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   // M
   add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
 
-
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form(new CustomMatrixFormVolDiffusion(0, 0, diffusivity));
@@ -94,7 +93,7 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   // Just for Runge-Kutta of more stages, where ext[0] and ext[1] are generally different
   //  add_vector_form(new CustomVectorFormVol(0, 1, 1.));
   //  add_vector_form(new CustomVectorFormVol(0, 0, -1.));
-    // A
+  // A
   add_vector_form(new CustomVectorFormVolConvection(0, 0));
   add_vector_form(new CustomVectorFormVolDiffusion(0, 0, diffusivity));
   add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 0, true, true));
@@ -104,13 +103,6 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   add_vector_form_surf(new CustomVectorFormSurfConvection(0, 0, false, true));
   if(add_inlet)
     this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet, true));
-
-  // b
-  if(add_inlet)
-  {
-    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 1, true, false));
-    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 1, diffusivity, s, sigma, inlet, false, 1.));
-  }
 }
 
 SmoothingWeakFormResidual::SmoothingWeakFormResidual(SolvedExample solvedExample, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, bool add_rhs) : WeakForm<double>(1)
@@ -594,7 +586,7 @@ double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_
   return target;
 }
 
-Hermes::Algebra::Vector<double>* cut_off_linear_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+Hermes::Algebra::SimpleVector<double>* cut_off_linear_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
 {
   SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
   Element *e;
@@ -609,7 +601,7 @@ Hermes::Algebra::Vector<double>* cut_off_linear_part(double* src_vector, SpaceSh
   return vector;
 }
 
-Hermes::Algebra::Vector<double>* cut_off_quadratic_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+Hermes::Algebra::SimpleVector<double>* cut_off_quadratic_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
 {
   SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
   Element *e;

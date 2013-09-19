@@ -168,5 +168,6 @@ int main(int argc, char* argv[])
   cpu_time.tick();
   logger.info("p-Multigrid total: %s", cpu_time.last_str().c_str());
 
+  View::wait();
   return 0;
 }

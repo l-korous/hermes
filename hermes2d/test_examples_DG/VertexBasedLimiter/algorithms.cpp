@@ -101,7 +101,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
 static int smoothing_steps_count(int level, bool pre)
 {
-  return 3;
+  return 5;
 }
 
 static double residual_drop(int level, bool pre)
@@ -124,12 +124,12 @@ static bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec
 
   return false;
 }
+
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
                  double diffusivity, double time_step_length, 
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
                  ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
 {
-
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   int ndofs_2 = space_2->get_num_dofs();
@@ -137,51 +137,55 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int ndofs_1 = space_1->get_num_dofs();
   SpaceSharedPtr<double> space_0(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   int ndofs_0 = space_0->get_num_dofs();
-
-  // 1 - solver
-  SmoothingWeakForm weakform_1(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma, false);
-  SmoothingWeakForm weakform_2(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
-  weakform_1.set_current_time_step(time_step_length);
-  weakform_1.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-  weakform_2.set_current_time_step(time_step_length);
-  weakform_2.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-  LinearSolver<double> solver_1(&weakform_1, space_1);
-  LinearSolver<double> solver_2(&weakform_2, space_2);
-  DiscreteProblem<double> solver_dp_1(&weakform_1, space_1);
-  CSCMatrix<double> matrix_1;
-  solver_1.set_verbose_output(false);
-  solver_1.set_jacobian_constant();
-  solver_2.set_verbose_output(false);
-  solver_2.set_jacobian_constant();
-  ScalarView coarse_solution_view;
-  // 1 - Residual measurement.
+  
+  // Matrices A, vectors b.
   ExactWeakForm weakform_exact(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution);
   weakform_exact.set_current_time_step(time_step_length);
-  DiscreteProblem<double> dp_1(&weakform_exact, space_1);
-  SimpleVector<double> vec_1;
-  CSCMatrix<double> mat_1;
-  dp_1.assemble(&mat_1, &vec_1);
-  double* residual_1 = new double[ndofs_1];
-  DiscreteProblem<double> dp_2(&weakform_exact, space_2);
-  SimpleVector<double> vec_2;
-  CSCMatrix<double> mat_2;
-  dp_2.assemble(&mat_2, &vec_2);
-  double* residual_2 = new double[ndofs_2];
+  CSCMatrix<double> matrix_A_2;
+  SimpleVector<double> vector_b_2;
+  CSCMatrix<double> matrix_A_1;
+  SimpleVector<double> vector_b_1;
+  CSCMatrix<double> matrix_A_0;
+  SimpleVector<double> vector_b_0;
 
-  // 0 - solver
-  FullImplicitWeakForm weakform_0(solvedExample, 1, true, "Inlet", diffusivity);
-  weakform_0.set_current_time_step(time_step_length);
-  weakform_0.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
-  DiscreteProblem<double> dp_0(&weakform_0, space_0);
-  CSCMatrix<double> matrix_0;
+  // Matrices (M+A_tilde), vectors -A(u_K)
+  SmoothingWeakForm weakform_smoother(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
+  weakform_smoother.set_current_time_step(time_step_length);
+  weakform_smoother.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
+  CSCMatrix<double> matrix_MA_tilde_2;
+  SimpleVector<double> vector_A_2;
+  CSCMatrix<double> matrix_MA_tilde_1;
+  SimpleVector<double> vector_A_1;
+  
+  // Assembler.
+  DiscreteProblem<double> dp;
+  // Level 2.
+  dp.set_space(space_2);
+  dp.set_weak_formulation(&weakform_exact);
+  dp.assemble(&matrix_A_2, &vector_b_2);
+  dp.set_weak_formulation(&weakform_smoother);
+  dp.assemble(&matrix_MA_tilde_2);
+
+  // Level 1.
+  dp.set_space(space_1);
+  dp.set_weak_formulation(&weakform_exact);
+  dp.assemble(&matrix_A_1, &vector_b_1);
+  dp.set_weak_formulation(&weakform_smoother);
+  dp.assemble(&matrix_MA_tilde_1);
+
+  // Level 0.
+  dp.set_space(space_0);
+  dp.set_weak_formulation(&weakform_exact);
+  dp.assemble(&matrix_A_0, &vector_b_0);
 
   // Utils.
-  double* slnv_2 = new double[ndofs_2];
-  double* slnv_1 = new double[ndofs_1];
-  double* slnv_1_increment = new double[ndofs_1];
-  double* slnv_0 = new double[ndofs_0];
-  double initial_residual_norm;
+  double* residual_2 = new double[ndofs_2];
+  SimpleVector<double> sln_2(ndofs_2);
+  double* residual_1 = new double[ndofs_1];
+  SimpleVector<double> sln_1(ndofs_1);
+  SimpleVector<double> sln_0(ndofs_0);
   
+  double initial_residual_norm;
   // Reports.
   int num_coarse = 0;
   int num_2 = 0;
@@ -195,141 +199,158 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
 #pragma region 0 - highest level
     // Store the previous solution.
-    OGProjection<double>::project_global(space_2, previous_sln, slnv_2);
+    OGProjection<double>::project_global(space_2, previous_sln, &sln_2);
     if(polynomialDegree > 1)
     {
       for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
       {
-        num_2++;
         // Solve for increment.
-        solver_2.solve();
-        // Add
-        for(int k = 0; k < ndofs_2; k++)
-          slnv_2[k] += solver_2.get_sln_vector()[k];
+        dp.set_space(space_2);
+        dp.set_weak_formulation(&weakform_smoother);
+        dp.assemble(&vector_A_2);
+        UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_2, (SimpleVector<double>*)vector_A_2.add_vector(&vector_b_2));
+        solver.solve();
+        sln_2.add_vector(solver.get_sln_vector());
 
-        Solution<double>::vector_to_solution(slnv_2, space_2, previous_sln);
-        
-        // Show
+        // Make solution
+        Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
         solution_view->show(previous_sln);
         
         // Residual check.
-        residual_condition(&mat_2, &vec_2, slnv_2, residual_2, logger, iteration, true);
+        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger, iteration, true);
       }
     }
 #pragma endregion
 
 #pragma region 1 - intermediate level
     // Store the previous solution.
-    memset(slnv_1_increment, 0, sizeof(double)*space_1->get_num_dofs());
-    
+    OGProjection<double>::project_global(space_1, previous_sln, &sln_1);
+
     for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
     {
-      num_1++;
-
-      // Store the previous solution.
-      OGProjection<double>::project_global(space_1, previous_sln, slnv_1);
-      if(polynomialDegree > 1 && iteration == 1)
-      {
-        if(step == 1)
-          solver_dp_1.assemble(&matrix_1);
-        UMFPackLinearMatrixSolver<double> local_solver_1(&matrix_1, (Algebra::SimpleVector<double>*)cut_off_quadratic_part(residual_2, space_1, space_2));
-        local_solver_1.solve();
-        for(int k = 0; k < ndofs_1; k++)
-        {
-          slnv_1_increment[k] += local_solver_1.get_sln_vector()[k];
-          slnv_1[k] += local_solver_1.get_sln_vector()[k];
-        }
-      }
+      // Solve for increment.
+      SimpleVector<double>* rhs;
+      if(iteration == 1)
+        rhs = cut_off_quadratic_part(residual_2, space_1, space_2);
       else
       {
-        solver_1.solve();
-        for(int k = 0; k < ndofs_1; k++)
-        {
-          slnv_1_increment[k] += solver_1.get_sln_vector()[k];
-          slnv_1[k] += solver_1.get_sln_vector()[k];
-        }
+        dp.set_space(space_1);
+        dp.set_weak_formulation(&weakform_smoother);
+        dp.assemble(&vector_A_1);
+        SimpleVector<double> sln_2_projected(ndofs_1);
+        sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
+        double* projected_residual_2 = new double[ndofs_1];
+        matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
+        rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
+        delete [] projected_residual_2;
       }
+      UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, rhs);
+      solver.solve();
+      sln_1.add_vector(solver.get_sln_vector());
 
-      Solution<double>::vector_to_solution(slnv_1, space_1, previous_sln);
-
-      // Show
+      // Make solution
+      Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
       solution_view->show(previous_sln);
-
+        
       // Residual check.
-      residual_condition(&mat_1, &vec_1, slnv_1, residual_1, logger, iteration, false);
+      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger, iteration, true);
     }
 #pragma endregion
 
 #pragma region  2 - Solve the problem on the coarse level exactly
     num_coarse++;
+    OGProjection<double>::project_global(space_0, previous_sln, &sln_0);
+
     //// Solve for increment
-    if(step == 1)
-      dp_0.assemble(&matrix_0);
-    UMFPackLinearMatrixSolver<double> solver_0(&matrix_0, (Algebra::SimpleVector<double>*)cut_off_linear_part(&vec_1, space_0, space_1));
-    solver_0.solve();
-    //// Show
-    ////coarse_solution_view.show(previous_sln);
+    // First term.
+    SimpleVector<double>* vector = cut_off_linear_part(residual_1, space_0, space_1);
+    // Second term (two projections of 2-residual).
+    vector->add_vector(cut_off_linear_part(residual_2, space_0, space_2));
+    
+    // Third - complicated.
+    double* projected_residual_2 = new double[ndofs_1];
+
+    // I(u_2)
+    SimpleVector<double> sln_2_projected(ndofs_1);
+    sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
+    // A(I(u_2))
+    matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
+    // -A(I(u_2)) + b_1 (= R(I(u_2))
+    SimpleVector<double> projected_residual(ndofs_1);
+    projected_residual.set_vector(projected_residual_2);
+    delete [] projected_residual_2;
+    projected_residual.change_sign();
+    projected_residual.add_vector(&vector_b_1);
+    // Add I(R(I(u_2)))
+    vector->add_vector(cut_off_linear_part(projected_residual.v, space_0, space_1));
+    vector->change_sign();
+
+    //cut_off_linear_part(residual_2, space_0, space_2)->export_to_file("a", "a", EXPORT_FORMAT_PLAIN_ASCII);
+    //cut_off_linear_part(projected_residual.v, space_0, space_1)->export_to_file("b", "a", EXPORT_FORMAT_PLAIN_ASCII);
+    UMFPackLinearMatrixSolver<double> solver(&matrix_A_0, vector);
+    solver.solve();
+    delete [] vector;
+    sln_0.set_vector(solver.get_sln_vector());
+    // Make solution
+    Solution<double>::vector_to_solution(&sln_0, space_0, previous_sln);
+    solution_view->show(previous_sln);
+    //View::wait_for_keypress();
 #pragma endregion
 
 #pragma region 1 - intermediate level
-    // 3 - Prolongation and replacement
-    double* solution_vector = merge_slns(solver_0.get_sln_vector(), space_0, slnv_1, space_1, space_1, true);
-    Solution<double>::vector_to_solution(solution_vector, space_1, previous_sln);
-    
     // Store the previous solution.
-    memcpy(slnv_1, solution_vector, sizeof(double)*space_1->get_num_dofs());
-    delete [] solution_vector;
-    for(int iteration = 1; iteration <= smoothing_steps_count(1, false); iteration++)
+    sln_1.set_vector(merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, true));
+    Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
+
+    for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
     {
-      num_1++;
+      // Solve for increment.
+      SimpleVector<double>* rhs;
+      dp.set_space(space_1);
+      dp.set_weak_formulation(&weakform_smoother);
+      dp.assemble(&vector_A_1);
+      SimpleVector<double> sln_2_projected(ndofs_1);
+      sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
+      double* projected_residual_2 = new double[ndofs_1];
+      matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
+      rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
+      delete [] projected_residual_2;
+      UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, rhs);
+      solver.solve();
+      sln_1.add_vector(solver.get_sln_vector());
 
-      solver_1.solve();
-      
-      for(int k = 0; k < ndofs_1; k++)
-      {
-        slnv_1_increment[k] += solver_1.get_sln_vector()[k];
-        slnv_1[k] += solver_1.get_sln_vector()[k];
-      }
-
-      Solution<double>::vector_to_solution(slnv_1, space_1, previous_sln);
-
-      // Show
+      // Make solution
+      Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
       solution_view->show(previous_sln);
-
+        
       // Residual check.
-      residual_condition(&mat_1, &vec_1, slnv_1, residual_1, logger, iteration, false);
+      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger, iteration, true);
     }
 #pragma endregion
 
+    #pragma region 0 - highest level
+    // Store the previous solution.
+    sln_2.set_vector(merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false));
+    Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
 
-#pragma region 0 - highest level
     if(polynomialDegree > 1)
     {
-      // 4 - Prolongation and replacement
-      solution_vector = merge_slns(slnv_1, space_1, slnv_2, space_2, space_2);
-      Solution<double>::vector_to_solution(solution_vector, space_2, previous_sln);
-      // Store the previous solution.
-      memcpy(slnv_2, solution_vector, sizeof(double)*space_2->get_num_dofs());
-      delete [] solution_vector;
-    
-      for(int iteration = 1; iteration <= smoothing_steps_count(2, false); iteration++)
+      for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
       {
-        num_2++;
-       
         // Solve for increment.
-        solver_2.solve();
+        dp.set_space(space_2);
+        dp.set_weak_formulation(&weakform_smoother);
+        dp.assemble(&vector_A_2);
+        UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_2, (SimpleVector<double>*)vector_A_2.add_vector(&vector_b_2));
+        solver.solve();
+        sln_2.add_vector(solver.get_sln_vector());
 
-        // Add
-        for(int k = 0; k < ndofs_2; k++)
-          slnv_2[k] += solver_2.get_sln_vector()[k];
-        
-        Solution<double>::vector_to_solution(slnv_2, space_2, previous_sln);
-
-        // Show
+        // Make solution
+        Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
         solution_view->show(previous_sln);
-      
+        
         // Residual check.
-        residual_condition(&mat_2, &vec_2, slnv_2, residual_2, logger, iteration, false);
+        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger, iteration, true);
       }
     }
 #pragma endregion
