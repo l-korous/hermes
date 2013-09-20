@@ -101,7 +101,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
 static int smoothing_steps_count(int level, bool pre)
 {
-  return 5;
+  return 3;
 }
 
 static double residual_drop(int level, bool pre)
@@ -110,12 +110,12 @@ static double residual_drop(int level, bool pre)
 }
 
 static bool use_residual_drop_condition = true;
-static bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, double* sln_vector, double* residual, Hermes::Mixins::Loggable& logger, int iteration, bool presmoothing)
+bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, double* sln_vector, double* residual, Hermes::Mixins::Loggable& logger, int iteration, bool presmoothing)
 {
   mat->multiply_with_vector(sln_vector, residual, true);
   for(int i = 0; i < mat->get_size(); i++)
     residual[i] -= vec->get(i);
-  
+
   if(use_residual_drop_condition)
   {
     double residual_norm = Hermes2D::get_l2_norm(residual, mat->get_size());
@@ -130,6 +130,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
                  ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
 {
+  bool show_intermediate = false;
+  
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   int ndofs_2 = space_2->get_num_dofs();
@@ -150,12 +152,16 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
   // Matrices (M+A_tilde), vectors -A(u_K)
   SmoothingWeakForm weakform_smoother(solvedExample, true, 1, true, "Inlet", diffusivity, s, sigma);
+  SmoothingWeakForm weakform_smoother_coarse(solvedExample, false, 1, true, "Inlet", diffusivity, s, sigma);
   weakform_smoother.set_current_time_step(time_step_length);
   weakform_smoother.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
+  weakform_smoother_coarse.set_current_time_step(time_step_length);
+  weakform_smoother_coarse.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   CSCMatrix<double> matrix_MA_tilde_2;
   SimpleVector<double> vector_A_2;
   CSCMatrix<double> matrix_MA_tilde_1;
   SimpleVector<double> vector_A_1;
+  CSCMatrix<double> matrix_MA_0;
   
   // Assembler.
   DiscreteProblem<double> dp;
@@ -177,6 +183,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   dp.set_space(space_0);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_0, &vector_b_0);
+  dp.set_weak_formulation(&weakform_smoother_coarse);
+  dp.assemble(&matrix_MA_0);
+
 
   // Utils.
   double* residual_2 = new double[ndofs_2];
@@ -231,18 +240,37 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       // Solve for increment.
       SimpleVector<double>* rhs;
       if(iteration == 1)
-        rhs = cut_off_quadratic_part(residual_2, space_1, space_2);
+      {
+        if(polynomialDegree > 1)
+          rhs = cut_off_quadratic_part(residual_2, space_1, space_2);
+        else
+        {
+          OGProjection<double>::project_global(space_1, previous_sln, previous_sln);
+                  dp.set_space(space_1);
+        dp.set_weak_formulation(&weakform_smoother);
+        dp.assemble(&vector_A_1);
+          rhs = (SimpleVector<double>*)vector_A_1.add_vector(&vector_b_1);
+          }
+      }
       else
       {
+        // A(u_K) - done after the first step.
         dp.set_space(space_1);
         dp.set_weak_formulation(&weakform_smoother);
         dp.assemble(&vector_A_1);
+        
+        if(polynomialDegree > 1)
+        {
+        // A(u_0)
         SimpleVector<double> sln_2_projected(ndofs_1);
         sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
         double* projected_residual_2 = new double[ndofs_1];
         matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
-        rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
+          rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
         delete [] projected_residual_2;
+                  }
+        else
+          rhs = (SimpleVector<double>*)vector_A_1.add_vector(&vector_b_1);
       }
       UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, rhs);
       solver.solve();
@@ -250,23 +278,27 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
       // Make solution
       Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
+              if(show_intermediate)
       solution_view->show(previous_sln);
-        
+
       // Residual check.
       residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger, iteration, true);
     }
 #pragma endregion
 
 #pragma region  2 - Solve the problem on the coarse level exactly
-    num_coarse++;
     OGProjection<double>::project_global(space_0, previous_sln, &sln_0);
+
+    num_coarse++;
 
     //// Solve for increment
     // First term.
     SimpleVector<double>* vector = cut_off_linear_part(residual_1, space_0, space_1);
+    if(polynomialDegree > 1)
+    {
     // Second term (two projections of 2-residual).
     vector->add_vector(cut_off_linear_part(residual_2, space_0, space_2));
-    
+
     // Third - complicated.
     double* projected_residual_2 = new double[ndofs_1];
 
@@ -283,18 +315,22 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     projected_residual.add_vector(&vector_b_1);
     // Add I(R(I(u_2)))
     vector->add_vector(cut_off_linear_part(projected_residual.v, space_0, space_1));
+    }
     vector->change_sign();
 
     //cut_off_linear_part(residual_2, space_0, space_2)->export_to_file("a", "a", EXPORT_FORMAT_PLAIN_ASCII);
     //cut_off_linear_part(projected_residual.v, space_0, space_1)->export_to_file("b", "a", EXPORT_FORMAT_PLAIN_ASCII);
-    UMFPackLinearMatrixSolver<double> solver(&matrix_A_0, vector);
+    UMFPackLinearMatrixSolver<double> solver(&matrix_MA_0, vector);
     solver.solve();
-    delete [] vector;
+    delete vector;
+
     sln_0.set_vector(solver.get_sln_vector());
+        if(show_intermediate)
+        {
     // Make solution
     Solution<double>::vector_to_solution(&sln_0, space_0, previous_sln);
     solution_view->show(previous_sln);
-    //View::wait_for_keypress();
+    }
 #pragma endregion
 
 #pragma region 1 - intermediate level
@@ -305,22 +341,30 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
     {
       // Solve for increment.
-      SimpleVector<double>* rhs;
       dp.set_space(space_1);
       dp.set_weak_formulation(&weakform_smoother);
       dp.assemble(&vector_A_1);
-      SimpleVector<double> sln_2_projected(ndofs_1);
-      sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
-      double* projected_residual_2 = new double[ndofs_1];
-      matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
-      rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
-      delete [] projected_residual_2;
-      UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, rhs);
+      
+      if(polynomialDegree > 1)
+        {
+        // A(u_0)
+        SimpleVector<double> sln_2_projected(ndofs_1);
+        sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
+        double* projected_residual_2 = new double[ndofs_1];
+        matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
+        vector_A_1.add_vector(projected_residual_2);
+        delete [] projected_residual_2;
+                  }
+        else
+        vector_A_1.add_vector(&vector_b_1);
+            
+      UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, &vector_A_1);
       solver.solve();
       sln_1.add_vector(solver.get_sln_vector());
 
       // Make solution
       Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
+        if(show_intermediate)
       solution_view->show(previous_sln);
         
       // Residual check.
@@ -329,12 +373,13 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
     #pragma region 0 - highest level
-    // Store the previous solution.
-    sln_2.set_vector(merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false));
-    Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
-
+    
     if(polynomialDegree > 1)
     {
+      // Store the previous solution.
+      sln_2.set_vector(merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false));
+      Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
+
       for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
       {
         // Solve for increment.
@@ -347,7 +392,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
         // Make solution
         Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
-        solution_view->show(previous_sln);
+          solution_view->show(previous_sln);
         
         // Residual check.
         residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger, iteration, true);
@@ -356,6 +401,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
     // Error & exact solution display.
+    solution_view->show(previous_sln);
     if(std::abs(exact_solver_error - calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
       break;
   }
