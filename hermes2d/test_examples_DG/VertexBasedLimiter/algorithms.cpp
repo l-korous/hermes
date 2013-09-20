@@ -101,7 +101,10 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
 static int smoothing_steps_count(int level, bool pre)
 {
-  return 3;
+if(level == 2)
+  return 11112;
+else
+  return 5;
 }
 
 static double residual_drop(int level, bool pre)
@@ -130,7 +133,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
                  ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
 {
-  bool show_intermediate = false;
+  bool show_intermediate = true;
   
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -162,6 +165,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   CSCMatrix<double> matrix_MA_tilde_1;
   SimpleVector<double> vector_A_1;
   CSCMatrix<double> matrix_MA_0;
+  SimpleVector<double> vector_A_0;
   
   // Assembler.
   DiscreteProblem<double> dp;
@@ -186,12 +190,12 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   dp.set_weak_formulation(&weakform_smoother_coarse);
   dp.assemble(&matrix_MA_0);
 
-
   // Utils.
   double* residual_2 = new double[ndofs_2];
   SimpleVector<double> sln_2(ndofs_2);
   double* residual_1 = new double[ndofs_1];
   SimpleVector<double> sln_1(ndofs_1);
+  double* residual_0 = new double[ndofs_0];
   SimpleVector<double> sln_0(ndofs_0);
   
   double initial_residual_norm;
@@ -234,7 +238,27 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma region 1 - intermediate level
     // Store the previous solution.
     OGProjection<double>::project_global(space_1, previous_sln, &sln_1);
+          
+    // f_P1
+    SimpleVector<double> f_P1(ndofs_1);
+    f_P1.zero();
+    // Minus A_P1
+    SimpleVector<double> R_P1(ndofs_1);
+    // Minus(minus) projected_A_P1
+    SimpleVector<double> projected_A_2(ndofs_2);
+    matrix_A_2.multiply_with_vector(sln_2.v, projected_A_2.v, true);
+    
+    SimpleVector<double>* projected_A_P_1
+     = (SimpleVector<double>*)cut_off_quadratic_part(projected_A_2.v, space_1, space_2);
 
+    SimpleVector<double>* sln_2_projected = cut_off_quadratic_part(sln_2.v, space_1, space_2);
+    matrix_A_1.multiply_with_vector(sln_2_projected->v, R_P1.v, true);
+
+    R_P1.change_sign();
+    f_P1.add_vector(&R_P1);
+    f_P1.add_vector(projected_A_P_1);
+    f_P1.change_sign();
+        
     for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
     {
       // Solve for increment.
@@ -246,11 +270,11 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         else
         {
           OGProjection<double>::project_global(space_1, previous_sln, previous_sln);
-                  dp.set_space(space_1);
-        dp.set_weak_formulation(&weakform_smoother);
-        dp.assemble(&vector_A_1);
+          dp.set_space(space_1);
+          dp.set_weak_formulation(&weakform_smoother);
+          dp.assemble(&vector_A_1);
           rhs = (SimpleVector<double>*)vector_A_1.add_vector(&vector_b_1);
-          }
+        }
       }
       else
       {
@@ -260,15 +284,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         dp.assemble(&vector_A_1);
         
         if(polynomialDegree > 1)
-        {
-        // A(u_0)
-        SimpleVector<double> sln_2_projected(ndofs_1);
-        sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
-        double* projected_residual_2 = new double[ndofs_1];
-        matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
-          rhs = (SimpleVector<double>*)vector_A_1.add_vector(projected_residual_2);
-        delete [] projected_residual_2;
-                  }
+          rhs = (SimpleVector<double>*)vector_A_1.add_vector(&f_P1)->add_vector(&vector_b_1);
         else
           rhs = (SimpleVector<double>*)vector_A_1.add_vector(&vector_b_1);
       }
@@ -288,75 +304,94 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
 #pragma region  2 - Solve the problem on the coarse level exactly
     OGProjection<double>::project_global(space_0, previous_sln, &sln_0);
+    
+    // f_P0
+    SimpleVector<double> f_P0(ndofs_0);
+    f_P0.zero();
+    // Minus A_P0
+    SimpleVector<double> R_P0(ndofs_0);
+    // Minus(minus) projected_A_P0
+    SimpleVector<double> projected_A_1(ndofs_1);
+    matrix_A_1.multiply_with_vector(sln_1.v, projected_A_1.v, true);
+    
+    SimpleVector<double>* projected_A_P_0
+     = (SimpleVector<double>*)cut_off_linear_part(projected_A_1.v, space_0, space_1);
+
+    SimpleVector<double>* sln_1_projected = cut_off_linear_part(sln_1.v, space_0, space_1);
+    matrix_A_0.multiply_with_vector(sln_1_projected->v, R_P0.v, true);
+
+    SimpleVector<double> projected_f_P1(ndofs_1);
+    projected_f_P1.set_vector(&f_P1);
+    
+    R_P0.change_sign();
+    f_P0.add_vector(&R_P0);
+    f_P0.add_vector(projected_A_P_0);
+    f_P0.add_vector(cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign());
+    f_P0.change_sign();
 
     num_coarse++;
-
-    //// Solve for increment
-    // First term.
-    SimpleVector<double>* vector = cut_off_linear_part(residual_1, space_0, space_1);
-    if(polynomialDegree > 1)
+    
+    for(int iteration = 1; iteration <= smoothing_steps_count(0, true); iteration++)
     {
-    // Second term (two projections of 2-residual).
-    vector->add_vector(cut_off_linear_part(residual_2, space_0, space_2));
-
-    // Third - complicated.
-    double* projected_residual_2 = new double[ndofs_1];
-
-    // I(u_2)
-    SimpleVector<double> sln_2_projected(ndofs_1);
-    sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
-    // A(I(u_2))
-    matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
-    // -A(I(u_2)) + b_1 (= R(I(u_2))
-    SimpleVector<double> projected_residual(ndofs_1);
-    projected_residual.set_vector(projected_residual_2);
-    delete [] projected_residual_2;
-    projected_residual.change_sign();
-    projected_residual.add_vector(&vector_b_1);
-    // Add I(R(I(u_2)))
-    vector->add_vector(cut_off_linear_part(projected_residual.v, space_0, space_1));
-    }
-    vector->change_sign();
-
-    //cut_off_linear_part(residual_2, space_0, space_2)->export_to_file("a", "a", EXPORT_FORMAT_PLAIN_ASCII);
-    //cut_off_linear_part(projected_residual.v, space_0, space_1)->export_to_file("b", "a", EXPORT_FORMAT_PLAIN_ASCII);
-    UMFPackLinearMatrixSolver<double> solver(&matrix_MA_0, vector);
-    solver.solve();
-    delete vector;
-
-    sln_0.set_vector(solver.get_sln_vector());
-        if(show_intermediate)
+      SimpleVector<double>* rhs;
+      if(iteration == 1)
+      {
+        if(polynomialDegree > 1)
+          rhs = (SimpleVector<double>*)cut_off_linear_part(residual_1, space_0, space_1)->add_vector(cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign());
+        else
         {
-    // Make solution
-    Solution<double>::vector_to_solution(&sln_0, space_0, previous_sln);
-    solution_view->show(previous_sln);
+          OGProjection<double>::project_global(space_0, previous_sln, previous_sln);
+          dp.set_space(space_0);
+          dp.set_weak_formulation(&weakform_smoother);
+          dp.assemble(&vector_A_0);
+          rhs = (SimpleVector<double>*)vector_A_0.add_vector(&vector_b_0);
+        }
+      }
+      else
+      {
+        // A(u_K) - done after the first step.
+        dp.set_space(space_0);
+        dp.set_weak_formulation(&weakform_smoother);
+        dp.assemble(&vector_A_0);
+        
+        if(polynomialDegree > 1)
+          rhs = (SimpleVector<double>*)vector_A_0.add_vector(&f_P0)->add_vector(&vector_b_0);
+        else
+          rhs = (SimpleVector<double>*)vector_A_0.add_vector(&vector_b_0);
+      }
+    UMFPackLinearMatrixSolver<double> solver(&matrix_MA_0, rhs);
+    solver.solve();
+
+    sln_0.add_vector(solver.get_sln_vector());
+    if(show_intermediate)
+    {
+      // Make solution
+      Solution<double>::vector_to_solution(&sln_0, space_0, previous_sln);
+      solution_view->show(previous_sln);
+    }
+    // Residual check.
+      residual_condition(&matrix_A_0, &vector_b_0, sln_0.v, residual_0, logger, iteration, true);
     }
 #pragma endregion
 
 #pragma region 1 - intermediate level
     // Store the previous solution.
-    sln_1.set_vector(merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, true));
+    sln_1.set_vector(merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, false));
     Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
 
-    for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
+    for(int iteration = 1; iteration <= smoothing_steps_count(1, false); iteration++)
     {
+      SimpleVector<double>* rhs;
+    
       // Solve for increment.
       dp.set_space(space_1);
       dp.set_weak_formulation(&weakform_smoother);
       dp.assemble(&vector_A_1);
       
       if(polynomialDegree > 1)
-        {
-        // A(u_0)
-        SimpleVector<double> sln_2_projected(ndofs_1);
-        sln_2_projected.set_vector(cut_off_quadratic_part(sln_2.v, space_1, space_2));
-        double* projected_residual_2 = new double[ndofs_1];
-        matrix_A_1.multiply_with_vector(sln_2_projected.v, projected_residual_2, true);
-        vector_A_1.add_vector(projected_residual_2);
-        delete [] projected_residual_2;
-                  }
-        else
-        vector_A_1.add_vector(&vector_b_1);
+        rhs = (SimpleVector<double>*)vector_A_1.add_vector(&f_P1)->add_vector(&vector_b_1);
+      else
+        rhs = (SimpleVector<double>*)vector_A_1.add_vector(&vector_b_1);
             
       UMFPackLinearMatrixSolver<double> solver(&matrix_MA_tilde_1, &vector_A_1);
       solver.solve();
@@ -380,7 +415,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       sln_2.set_vector(merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false));
       Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
 
-      for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
+      for(int iteration = 1; iteration <= smoothing_steps_count(2, false); iteration++)
       {
         // Solve for increment.
         dp.set_space(space_2);
