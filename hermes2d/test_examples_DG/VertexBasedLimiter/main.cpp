@@ -4,8 +4,8 @@
 
 const int polynomialDegree = 2;
 int initialRefinementsCount = 4;
-const Algorithm algorithm = pMultigrid;
-const SolvedExample solvedExample = CircularConvection;
+const Algorithm algorithm = Multiscale;
+const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
 
 bool HermesView = true;
@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-3;
+double diffusivity = 1e-2;
 double s = -1;
 double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
@@ -27,7 +27,7 @@ int main(int argc, char* argv[])
   ss << "logfile_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
   logger.set_logFile_name(ss.str());
   
-  HermesCommonApi.set_integral_param_value(numThreads, 4);
+  HermesCommonApi.set_integral_param_value(numThreads, 16);
 
   switch(solvedExample)
   {
@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
-  //if(algorithm == Multiscale)
+  if(algorithm == Multiscale)
   {
     logger.info("Multiscale solver");
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
