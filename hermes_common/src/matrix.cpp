@@ -146,11 +146,23 @@ namespace Hermes
     {
       if(!vector_out_initialized)
         vector_out = new Scalar[this->size];
-      for(int i = 0; i < this->size; i++)
+
+      int num_threads_used = HermesCommonApi.get_integral_param_value(numThreads);
+
+#pragma omp parallel num_threads(num_threads_used)
       {
-        vector_out[i] = Scalar(0.);
-        for(int j = 0; j < this->size; j++)
-          vector_out[i] += this->get(i, j) * vector_in[j];
+        int thread_number = omp_get_thread_num();
+        int start = (this->size / num_threads_used) * thread_number;
+        int end = (this->size / num_threads_used) * (thread_number + 1);
+        if(thread_number == num_threads_used - 1)
+          end = this->size;
+
+        for(int i = start; i < end; i++)
+        {
+          vector_out[i] = Scalar(0.);
+          for(int j = 0; j < this->size; j++)
+            vector_out[i] += this->get(i, j) * vector_in[j];
+        }
       }
     }
 
@@ -687,7 +699,7 @@ namespace Hermes
 
     template<typename Scalar>
     Vector<Scalar>* SimpleVector<Scalar>::add_vector(Vector<Scalar>* vec)
-		{
+    {
       assert(this->get_size() == vec->get_size());
       for (unsigned int i = 0; i < this->get_size(); i++)
         this->add(i, vec->get(i));

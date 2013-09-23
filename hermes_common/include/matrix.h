@@ -306,7 +306,9 @@ namespace Hermes
 
     /// \brief General (abstract) matrix representation in Hermes.
     template<typename Scalar>
-    class HERMES_API Matrix : public Hermes::Mixins::Loggable, public Hermes::Mixins::MatrixRhsImportExport<Scalar>
+    class HERMES_API Matrix : 
+      public Hermes::Mixins::Loggable,
+      public Hermes::Mixins::MatrixRhsImportExport<Scalar>
     {
     public:
       /// constructor of matrix
