@@ -90,7 +90,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
     double err = calc_l2_error(solvedExample, mesh, solution, exact_solution, logger);
 
-    if(std::abs(exact_solver_error - err) < wrt_exact_solver_tolerance)
+    if(err < wrt_exact_solver_tolerance + exact_solver_error)
       break;
   }
 
@@ -102,7 +102,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 static int smoothing_steps_count(int level, bool pre)
 {
 if(level == 2)
-  return 11112;
+  return 2;
 else
   return 5;
 }
@@ -437,7 +437,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
     // Error & exact solution display.
     solution_view->show(previous_sln);
-    if(std::abs(exact_solver_error - calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger)) < wrt_exact_solver_tolerance)
+    if(calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger) < wrt_exact_solver_tolerance + exact_solver_error)
       break;
   }
   logger.info("V-cycles: %i", v_cycles);

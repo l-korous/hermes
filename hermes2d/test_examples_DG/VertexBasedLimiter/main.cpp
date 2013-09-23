@@ -5,7 +5,7 @@
 const int polynomialDegree = 2;
 int initialRefinementsCount = 4;
 const Algorithm algorithm = pMultigrid;
-const SolvedExample solvedExample = Benchmark;
+const SolvedExample solvedExample = CircularConvection;
 const EulerLimiterType limiter_type = VertexBased;
 
 bool HermesView = true;
