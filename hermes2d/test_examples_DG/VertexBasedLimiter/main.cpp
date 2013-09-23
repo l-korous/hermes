@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
-  if(algorithm == Multiscale)
+  //if(algorithm == Multiscale)
   {
     logger.info("Multiscale solver");
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
@@ -159,7 +159,7 @@ int main(int argc, char* argv[])
   logger.info("\n");
   
   cpu_time.tick();
-  if(algorithm == pMultigrid)
+  //if(algorithm == pMultigrid)
   {
     logger.info("p-Multigrid solver");
     p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution, diffusivity, time_step_length, time_interval_length, 
