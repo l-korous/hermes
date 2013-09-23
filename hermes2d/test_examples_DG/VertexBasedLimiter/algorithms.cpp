@@ -278,13 +278,13 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
   UMFPackLinearMatrixSolver<double> solver_2(&matrix_MA_tilde_2, &vector_A_2);
   solver_2.setup_factorization();
-  solver_2.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  solver_2.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
   UMFPackLinearMatrixSolver<double> solver_1(&matrix_MA_tilde_1, &vector_A_1);
   solver_1.setup_factorization();
-  solver_1.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  solver_1.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
   UMFPackLinearMatrixSolver<double> solver_0(&matrix_MA_0, &vector_A_0);
   solver_0.setup_factorization();
-  solver_0.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  solver_0.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
 
   // Utils.
   double* residual_2 = new double[ndofs_2];
