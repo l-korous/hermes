@@ -190,7 +190,7 @@ public:
 class CustomMatrixFormInterfaceConvection : public MatrixFormDG<double>
 {
 public:
-  CustomMatrixFormInterfaceConvection(int i, int j, bool local) : MatrixFormDG<double>(i, j), local(local)
+  CustomMatrixFormInterfaceConvection(int i, int j, bool local, bool inverse = false) : MatrixFormDG<double>(i, j), local(local), inverse(inverse)
   {
   };
 
@@ -199,10 +199,20 @@ public:
   {
     if(local)
     {
-      if(u->fn_central == NULL && v->fn_central != NULL)
-        return 0.;
-      if(u->fn_central != NULL && v->fn_central == NULL)
-        return 0.;
+      if(inverse)
+      {
+        if(u->fn_central != NULL && v->fn_central != NULL)
+          return 0.;
+        if(u->fn_central == NULL && v->fn_central == NULL)
+          return 0.;
+      }
+      else
+      {
+        if(u->fn_central == NULL && v->fn_central != NULL)
+          return 0.;
+        if(u->fn_central != NULL && v->fn_central == NULL)
+          return 0.;
+      }
     }
     double result = 0.;
     for (int i = 0; i < n; i++) 
@@ -230,7 +240,7 @@ public:
   {
     return new CustomMatrixFormInterfaceConvection(*this);
   }
-  bool local;
+  bool local, inverse;
 };
 
 class CustomVectorFormInterfaceConvection : public VectorFormDG<double>
@@ -420,7 +430,7 @@ public:
 class CustomMatrixFormInterfaceDiffusion : public MatrixFormDG<double>
 {
 public:
-  CustomMatrixFormInterfaceDiffusion(int i, int j, bool local, double diffusivity, double s, double sigma) : MatrixFormDG<double>(i, j), local(local), diffusivity(diffusivity), s(s), sigma(sigma)
+  CustomMatrixFormInterfaceDiffusion(int i, int j, bool local, double diffusivity, double s, double sigma, bool inverse = false) : MatrixFormDG<double>(i, j), local(local), inverse(inverse), diffusivity(diffusivity), s(s), sigma(sigma)
   {
   };
 
@@ -429,10 +439,20 @@ public:
   {
     if(local)
     {
-      if(u->fn_central == NULL && v->fn_central != NULL)
-        return 0.;
-      if(u->fn_central != NULL && v->fn_central == NULL)
-        return 0.;
+      if(inverse)
+      {
+        if(u->fn_central != NULL && v->fn_central != NULL)
+          return 0.;
+        if(u->fn_central == NULL && v->fn_central == NULL)
+          return 0.;
+      }
+      else
+      {
+        if(u->fn_central == NULL && v->fn_central != NULL)
+          return 0.;
+        if(u->fn_central != NULL && v->fn_central == NULL)
+          return 0.;
+      }
     }
 
     double result = 0.;
@@ -533,7 +553,7 @@ public:
   {
     return new CustomMatrixFormInterfaceDiffusion(*this);
   }
-  bool local;
+  bool local, inverse;
   double diffusivity;
   double s;
   double sigma;

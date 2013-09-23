@@ -19,6 +19,11 @@ double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFuncti
   return result;
 }
 
+bool error_condition(double error)
+{
+  return std::abs(error - exact_solver_error) < wrt_exact_solver_tolerance;
+}
+
 void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
@@ -42,23 +47,79 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   // Standard L2 space.
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor(false)));
   SpaceSharedPtr<double> full_space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
-
   SpaceSharedPtr<double> const_space(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
+
   int ndofs = space->get_num_dofs();
+  int const_ndofs = const_space->get_num_dofs();
+  int full_ndofs = full_space->get_num_dofs();
 
   OGProjection<double>::project_global(const_space, previous_mean_values, previous_mean_values);
   OGProjection<double>::project_global(space, previous_derivatives, previous_derivatives);
 
-  ImplicitWeakForm weakform_implicit(solvedExample, true, "Inlet", diffusivity, s, sigma);
+  // Matrices A, vectors b.
+  ExactWeakForm weakform_exact(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution);
+  MultiscaleWeakForm weakform_implicit(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution, false);
+  MultiscaleWeakForm weakform_explicit(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution, true);
+  ExplicitWeakForm weakform_explicit_offdiag(solvedExample, true, "Inlet", diffusivity, s, sigma);
+  MassWeakForm weakform_mass;
+  weakform_exact.set_current_time_step(time_step_length);
   weakform_implicit.set_current_time_step(time_step_length);
-  weakform_implicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, exact_solution));
-  ExplicitWeakForm weakform_explicit(solvedExample, true, "Inlet", diffusivity, s, sigma);
-  weakform_explicit.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_mean_values, previous_derivatives, exact_solution));
   weakform_explicit.set_current_time_step(time_step_length);
-  LinearSolver<double> solver_implicit(&weakform_implicit, const_space);
-  solver_implicit.set_jacobian_constant();
-  LinearSolver<double> solver_explicit(&weakform_explicit, space);
-  solver_explicit.set_jacobian_constant();
+  weakform_explicit_offdiag.set_current_time_step(time_step_length);
+  CSCMatrix<double> matrix_A_full;
+  CSCMatrix<double> matrix_A_der;
+  SimpleVector<double> vector_b_der;
+  CSCMatrix<double> matrix_M_der;
+  CSCMatrix<double> matrix_A_offdiag;
+
+  CSCMatrix<double> matrix_A_means;
+  SimpleVector<double> vector_b_means;
+  CSCMatrix<double> matrix_M_means;
+
+  // Assembler.
+  DiscreteProblem<double> dp;
+  // Level 2.
+  dp.set_space(full_space);
+  dp.set_weak_formulation(&weakform_exact);
+  dp.assemble(&matrix_A_full);
+
+  // Level 1.
+  dp.set_space(space);
+  dp.set_weak_formulation(&weakform_explicit);
+  dp.assemble(&matrix_A_der, &vector_b_der);
+  dp.set_weak_formulation(&weakform_mass);
+  dp.assemble(&matrix_M_der);
+  dp.set_weak_formulation(&weakform_explicit_offdiag);
+  dp.assemble(&matrix_A_offdiag);
+
+  // Level 0.
+  dp.set_space(const_space);
+  dp.set_weak_formulation(&weakform_implicit);
+  dp.assemble(&matrix_A_means, &vector_b_means);
+  dp.set_weak_formulation(&weakform_mass);
+  dp.assemble(&matrix_M_means);
+
+  SimpleVector<double> vector_A_der(ndofs);
+  SimpleVector<double> vector_A_means(const_ndofs);
+
+  UMFPackLinearMatrixSolver<double> solver_means(&matrix_A_means, &vector_A_means);
+  solver_means.setup_factorization();
+  solver_means.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  UMFPackLinearMatrixSolver<double> solver_der(&matrix_A_der, &vector_A_der);
+  solver_der.setup_factorization();
+  solver_der.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+
+  // Utils.
+  SimpleVector<double> sln_means(const_ndofs);
+  SimpleVector<double> sln_means_long(full_ndofs);
+  SimpleVector<double> sln_means_long_temp(full_ndofs);
+  SimpleVector<double> sln_der(ndofs);
+  SimpleVector<double> sln_der_long(full_ndofs);
+  SimpleVector<double> sln_der_long_temp(full_ndofs);
+  SimpleVector<double> sln_der_offdiag(ndofs);
+
+  OGProjection<double>::project_global(const_space, previous_mean_values, sln_means.v);
+  OGProjection<double>::project_global(space, previous_derivatives, sln_der.v);
 
   // Reporting.
   int num_coarse = 0;
@@ -71,15 +132,39 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     logger.info("Iteration %i.", iteration);
     num_coarse++;
 
-    solver_implicit.solve();
-    Solution<double>::vector_to_solution(solver_implicit.get_sln_vector(), const_space, previous_mean_values);
+    matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
+    add_means(&sln_der, &sln_der_long, space, full_space);
+    matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
+    vector_A_means.add_vector(cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign());
+    vector_A_means.add_vector(&vector_b_means);
+    solver_means.solve();
+    sln_means.set_vector(solver_means.get_sln_vector());
+    //Solution<double>::vector_to_solution(solver_means.get_sln_vector(), const_space, previous_mean_values);
+    //solution_view->show(previous_mean_values);
+    //solution_view->wait_for_keypress();
 
     if(polynomialDegree)
     {
       num_fine++;
-      solver_explicit.solve();
-      double* merged_sln = merge_slns(solver_implicit.get_sln_vector(), const_space,solver_explicit.get_sln_vector(), space, full_space);
-      Solution<double>::vector_to_solution(solver_explicit.get_sln_vector(), space, previous_derivatives);
+
+      matrix_M_der.multiply_with_vector(sln_der.v, vector_A_der.v, true);
+
+      add_ders(&sln_means, &sln_means_long, const_space, full_space);
+      matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
+      vector_A_der.add_vector(cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign());
+
+      matrix_A_offdiag.multiply_with_vector(sln_der.v, sln_der_offdiag.v, true);
+      vector_A_der.add_vector(sln_der_offdiag.change_sign());
+
+      vector_A_der.add_vector(&vector_b_der);
+      matrix_A_der.export_to_file("A", "a", EXPORT_FORMAT_PLAIN_ASCII);
+      solver_der.solve();
+      sln_der.set_vector(solver_der.get_sln_vector());
+
+      double* merged_sln = merge_slns(sln_means.v, const_space, sln_der.v, space, full_space);
+      //Solution<double>::vector_to_solution(sln_der.v, space, previous_derivatives);
+      //solution_view->show(previous_derivatives);
+      //solution_view->wait_for_keypress();
       Solution<double>::vector_to_solution(merged_sln, full_space, solution);
       delete [] merged_sln;
     }
@@ -89,10 +174,9 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     }
 
     solution_view->show(solution);
+    //solution_view->wait_for_keypress();
 
-    double err = calc_l2_error(solvedExample, mesh, solution, exact_solution, logger);
-
-    if(err < wrt_exact_solver_tolerance + exact_solver_error)
+    if(error_condition(calc_l2_error(solvedExample, mesh, solution, exact_solution, logger)))
       break;
   }
 
@@ -436,7 +520,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
     // Error & exact solution display.
     solution_view->show(previous_sln);
-    if(calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger) < wrt_exact_solver_tolerance + exact_solver_error)
+
+    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger)))
       break;
   }
   logger.info("V-cycles: %i", v_cycles);

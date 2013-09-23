@@ -70,6 +70,11 @@ static void initialization(SolvedExample solvedExample)
   }
 }
 
+MassWeakForm::MassWeakForm() : WeakForm<double>(1) 
+{
+  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
+}
+
 SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, int explicitSchemeStep, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma, bool add_rhs) : WeakForm<double>(1) 
 {
   initialization(solvedExample);
@@ -164,46 +169,29 @@ ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::s
   }
 }
 
-ImplicitWeakForm::ImplicitWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet , double diffusivity, double s, double sigma) : WeakForm<double>(1)
+MultiscaleWeakForm::MultiscaleWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, bool local) : WeakForm<double>(1)
 {
   initialization(solvedExample);
 
-  // Mass matrix
   add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
-  // Mass matrix - rhs
-  add_vector_form(new CustomVectorFormVol(0, 0, 1.));
 
-  // Convection.
-  // Numerical flux - inner-edge element outlet - matrix
-  add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, false));
-  // Numerical flux - inner-edge inlet - mean values - rhs
-  add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 0, false, false));
-  // Numerical flux - inner-edge inlet+outlet - derivatives - rhs
-  add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 1, true, true));
-  // No convection - when test functions have zero gradient
+  // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
-  if(add_inlet)
-  {
-    // Numerical flux - boundary outlet - matrix
-    this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
-    // Numerical flux - boundary inlet - exact solution - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 2, true, false));
-    // Numerical flux - boundary outlet - derivatives - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 1, false, true));
-  }
-
-  // Diffusion.
-  // No Diffusion - when test functions have zero gradient
   add_matrix_form(new CustomMatrixFormVolDiffusion(0, 0, diffusivity));
-  add_matrix_form_DG(new CustomMatrixFormInterfaceDiffusion(0, 0, false, diffusivity, s, sigma));
-  add_vector_form_DG(new CustomVectorFormInterfaceDiffusion(0, 1, diffusivity, s, sigma));
+  add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, local));
+  add_matrix_form_DG(new CustomMatrixFormInterfaceDiffusion(0, 0, local, diffusivity, s, sigma));
+  // A_tilde_surf
+  this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
+  if(add_inlet)
+    this->add_matrix_form_surf(new CustomMatrixFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet));
+
+  // b
   if(add_inlet)
   {
-    // Numerical flux - boundary outlet - matrix
-    this->add_matrix_form_surf(new CustomMatrixFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet));
-    // Numerical flux - boundary inlet - exact solution - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 1, diffusivity, s, sigma, inlet, true));
-    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 2, diffusivity, s, sigma, inlet, false, 1.));
+    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 0, true, false));
+    this->vfsurf.back()->set_ext(exact_solution);
+    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet, false, 1.));
+    this->vfsurf.back()->set_ext(exact_solution);
   }
 }
 
@@ -211,51 +199,8 @@ ExplicitWeakForm::ExplicitWeakForm(SolvedExample solvedExample, bool add_inlet, 
 {
   initialization(solvedExample);
   
-  // Mass matrix
-  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
-
-  // Convection.
-  // Convective term - matrix
-  add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
-  // Convective term - rhs
-  add_vector_form(new CustomVectorFormVolConvection(0, 0));
-
-  // Numerical flux - inner-edge element outlet - matrix
-  add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, true));
-  // Numerical flux - inner-edge inlet+outlet - mean values - rhs
-  add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 0, true, true));
-  // Numerical flux - inner-edge inlet - derivatives - rhs
-  add_vector_form_DG(new CustomVectorFormInterfaceConvection(0, 1, true, false));
-  if(add_inlet)
-  {
-    // Numerical flux - boundary outlet - matrix
-    this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
-    // Numerical flux - boundary inlet - exact solution - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 2, true, false));
-    // Numerical flux - boundary outlet - mean values - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 0, false, true));
-  }
-
-  // Diffusion.
-  // Diffusive term - matrix
-  add_matrix_form(new CustomMatrixFormVolDiffusion(0, 0, diffusivity));
-  // Diffusive term - rhs - for mean values - zero
-  add_vector_form(new CustomVectorFormVolDiffusion(0, 0, diffusivity));
-  // Numerical flux - inner-edge element outlet - matrix
-  add_matrix_form_DG(new CustomMatrixFormInterfaceDiffusion(0, 0, false, diffusivity, s, sigma));
-  add_vector_form_DG(new CustomVectorFormInterfaceDiffusion(0, 0, diffusivity, s, sigma));
-  //add_vector_form_DG(new CustomVectorFormInterfaceDiffusionOffDiag(0, 1, diffusivity, s, sigma));
-  if(add_inlet)
-  {
-    // Numerical flux - boundary outlet - matrix
-    this->add_matrix_form_surf(new CustomMatrixFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet));
-    // Numerical flux - boundary inlet - exact solution - rhs
-    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 0, diffusivity, s, sigma, inlet, true));
-    this->add_vector_form_surf(new CustomVectorFormSurfDiffusion(0, 2, diffusivity, s, sigma, inlet, false, 1.));
-  }
-
-  // Mass matrix - rhs
-  add_vector_form(new CustomVectorFormVol(0, 1, 1.));
+  add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, true, true));
+  add_matrix_form_DG(new CustomMatrixFormInterfaceDiffusion(0, 0, true, diffusivity, s, sigma, true));
 }
 
 InitialConditionAdvectedCube::InitialConditionAdvectedCube(MeshSharedPtr mesh) : ExactSolutionScalar<double>(mesh)
@@ -616,4 +561,66 @@ Hermes::Algebra::SimpleVector<double>* cut_off_quadratic_part(double* src_vector
     vector->set(al_coarse.dof[2],src_vector[al_fine.dof[2]]);
   }
   return vector;
+}
+
+Hermes::Algebra::SimpleVector<double>* cut_off_means(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+{
+  SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
+  vector->zero();
+  Element *e;
+  for_all_active_elements(e, space_coarse->get_mesh())
+  {
+    AsmList<double> al_coarse, al_fine;
+    space_coarse->get_element_assembly_list(e, &al_coarse);
+    space_fine->get_element_assembly_list(e, &al_fine);
+
+    for(int i = 0; i < al_coarse.cnt; i++)
+      vector->set(al_coarse.dof[i],  src_vector[al_fine.dof[i+1]]);
+  }
+  return vector;
+}
+
+ void add_means(Hermes::Algebra::SimpleVector<double>* src, Hermes::Algebra::SimpleVector<double>* target, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+{
+  target->zero();
+  Element *e;
+  for_all_active_elements(e, space_coarse->get_mesh())
+  {
+    AsmList<double> al_coarse, al_fine;
+    space_coarse->get_element_assembly_list(e, &al_coarse);
+    space_fine->get_element_assembly_list(e, &al_fine);
+
+    for(int i = 0; i < al_coarse.cnt; i++)
+      target->set(al_fine.dof[i+1],  src->get(al_coarse.dof[i]));
+  }
+}
+
+Hermes::Algebra::SimpleVector<double>* cut_off_ders(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+{
+  SimpleVector<double>* vector = new SimpleVector<double>(space_coarse->get_num_dofs());
+  vector->zero();
+  Element *e;
+  for_all_active_elements(e, space_coarse->get_mesh())
+  {
+    AsmList<double> al_coarse, al_fine;
+    space_coarse->get_element_assembly_list(e, &al_coarse);
+    space_fine->get_element_assembly_list(e, &al_fine);
+
+    vector->set(al_coarse.dof[0],  src_vector[al_fine.dof[0]]);
+  }
+  return vector;
+}
+
+ void add_ders(Hermes::Algebra::SimpleVector<double>* src, Hermes::Algebra::SimpleVector<double>* target, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine)
+{
+  target->zero();
+  Element *e;
+  for_all_active_elements(e, space_coarse->get_mesh())
+  {
+    AsmList<double> al_coarse, al_fine;
+    space_coarse->get_element_assembly_list(e, &al_coarse);
+    space_fine->get_element_assembly_list(e, &al_fine);
+
+    target->set(al_fine.dof[0],  src->get(al_coarse.dof[0]));
+  }
 }
