@@ -62,10 +62,10 @@ public:
   MultiscaleWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0., MeshFunctionSharedPtr<double> exact_solution = NULL, bool local = true);
 };
 
-class ExplicitWeakForm  : public WeakForm<double>     
+class ExplicitWeakFormOffDiag  : public WeakForm<double>     
 {
 public:
-  ExplicitWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
+  ExplicitWeakFormOffDiag(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
 };
 
 class ErrorWeakForm  : public WeakForm<double>     
@@ -78,6 +78,18 @@ class MassWeakForm  : public WeakForm<double>
 {
 public:
   MassWeakForm();
+};
+
+class ImplicitWeakForm : public WeakForm<double>
+{
+public:
+  ImplicitWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
+};
+
+class ExplicitWeakForm  : public WeakForm<double>     
+{
+public:
+  ExplicitWeakForm(SolvedExample solvedExample, bool add_inlet = false, std::string inlet = "", double diffusivity = 0., double s = 0., double sigma = 0.);
 };
 
 #pragma endregion

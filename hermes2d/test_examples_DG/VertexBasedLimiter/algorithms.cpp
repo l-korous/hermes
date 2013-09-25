@@ -66,7 +66,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   ExactWeakForm weakform_exact(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution);
   MultiscaleWeakForm weakform_implicit(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution, false);
   MultiscaleWeakForm weakform_explicit(solvedExample, true, "Inlet", diffusivity, s, sigma, exact_solution, true);
-  ExplicitWeakForm weakform_explicit_offdiag(solvedExample, true, "Inlet", diffusivity, s, sigma);
+  ExplicitWeakFormOffDiag weakform_explicit_offdiag(solvedExample, true, "Inlet", diffusivity, s, sigma);
   MassWeakForm weakform_mass;
   weakform_exact.set_current_time_step(time_step_length);
   weakform_implicit.set_current_time_step(time_step_length);
