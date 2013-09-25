@@ -1,7 +1,9 @@
 #include "algorithms.h"
 
 static double exact_solver_error;
-static const double wrt_exact_solver_tolerance = 1e-6;
+static const double tolerance = 1e-4;
+double initial_error = -1;
+MeshFunctionSharedPtr<double> es(new Solution<double>());
 
 double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
@@ -21,7 +23,7 @@ double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFuncti
 
 bool error_condition(double error)
 {
-  return std::abs(error - exact_solver_error) < wrt_exact_solver_tolerance;
+  return std::abs(error / initial_error) < tolerance;
 }
 
 void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
@@ -37,6 +39,8 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
   exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
   exact_solver_view->show(exact_solver_sln);
+  initial_error = get_l2_norm(solver_exact.get_sln_vector(), space->get_num_dofs());
+  Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, es);
 }
 
 void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_mean_values, 
@@ -104,10 +108,10 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
   UMFPackLinearMatrixSolver<double> solver_means(&matrix_A_means, &vector_A_means);
   solver_means.setup_factorization();
-  solver_means.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  solver_means.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
   UMFPackLinearMatrixSolver<double> solver_der(&matrix_A_der, &vector_A_der);
   solver_der.setup_factorization();
-  solver_der.set_reuse_scheme(MatrixStructureReuseScheme::HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
+  solver_der.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
 
   // Utils.
   SimpleVector<double> sln_means(const_ndofs);
@@ -157,7 +161,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
 
       vector_A_der.add_vector(&vector_b_der);
-      matrix_A_der.export_to_file("A", "a", EXPORT_FORMAT_PLAIN_ASCII);
       solver_der.solve();
       sln_der.set_vector(solver_der.get_sln_vector());
 
@@ -176,21 +179,13 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, solution, exact_solution, logger)))
+    if(error_condition(calc_l2_error(solvedExample, mesh, solution, es, logger)))
       break;
   }
 
   logger.info("Iterations: %i", iterations);
   logger.info("Coarse systems solved: %i", num_coarse);
   logger.info("Fine systems solved: %i", num_fine);
-}
-
-static int smoothing_steps_count(int level, bool pre)
-{
-  if(level == 2)
-    return 2;
-  else
-    return 5;
 }
 
 bool show_intermediate = false;
@@ -209,7 +204,7 @@ bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, doubl
   if(output)
   {
     double residual_norm = Hermes2D::get_l2_norm(residual, mat->get_size());
-    logger.info("\tIteration: %i, residual norm: %f.", iteration, residual_norm);
+    logger.info("\tIteration: %i, residual norm: %g.", iteration, residual_norm);
   }
 
   return false;
@@ -218,9 +213,8 @@ bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, doubl
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
                  double diffusivity, double time_step_length, 
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger)
+                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, int steps)
 {
-
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   int ndofs_2 = space_2->get_num_dofs();
@@ -311,7 +305,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     OGProjection<double>::project_global(space_2, previous_sln, &sln_2);
     if(polynomialDegree > 1)
     {
-      for(int iteration = 1; iteration <= smoothing_steps_count(2, true); iteration++)
+      for(int iteration = 1; iteration <= steps; iteration++)
       {
         // Solve for increment.
         matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
@@ -353,7 +347,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     f_P1.add_vector(projected_A_P_1);
     f_P1.change_sign();
 
-    for(int iteration = 1; iteration <= smoothing_steps_count(1, true); iteration++)
+    for(int iteration = 1; iteration <= steps; iteration++)
     {
       // Solve for increment.
       SimpleVector<double>* rhs;
@@ -422,7 +416,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
     num_coarse++;
 
-    for(int iteration = 1; iteration <= smoothing_steps_count(0, true); iteration++)
+    for(int iteration = 1; iteration <= 1000; iteration++)
     {
       SimpleVector<double>* rhs;
       if(iteration == 1)
@@ -461,6 +455,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
       // Residual check.
       residual_condition(&matrix_A_0, &vector_b_0, sln_0.v, residual_0, logger, iteration, false);
+
+      if(get_l2_norm(solver_0.get_sln_vector(), space_0->get_num_dofs()) < 1e-6)
+        break;
     }
 #pragma endregion
 
@@ -469,7 +466,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     sln_1.set_vector(merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, false));
     Solution<double>::vector_to_solution(&sln_1, space_1, previous_sln);
 
-    for(int iteration = 1; iteration <= smoothing_steps_count(1, false); iteration++)
+    for(int iteration = 1; iteration <= steps; iteration++)
     {
       // Solve for increment.
       matrix_A_1.multiply_with_vector(sln_1.v, vector_A_1.v, true);
@@ -500,7 +497,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       sln_2.set_vector(merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false));
       Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
 
-      for(int iteration = 1; iteration <= smoothing_steps_count(2, false); iteration++)
+      for(int iteration = 1; iteration <= steps; iteration++)
       {
         // Solve for increment.
         matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
@@ -521,7 +518,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // Error & exact solution display.
     solution_view->show(previous_sln);
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, exact_solution, logger)))
+    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger)))
       break;
   }
   logger.info("V-cycles: %i", v_cycles);
