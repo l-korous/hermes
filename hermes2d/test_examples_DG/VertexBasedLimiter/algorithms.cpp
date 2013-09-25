@@ -18,6 +18,7 @@ double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFuncti
     result += vector.get(i);
   result = std::sqrt(result);
   logger.info("L2 Error: %g.", result);
+  delete dp;
   return result;
 }
 
@@ -46,7 +47,7 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
 void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_mean_values, 
                               MeshFunctionSharedPtr<double> previous_derivatives, double diffusivity, double s, double sigma, double time_step_length, 
                               double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                              ScalarView* solution_view, ScalarView* exact_view, Hermes::Mixins::Loggable& logger)
+                              ScalarView* solution_view, ScalarView* exact_view, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_details)
 {
   // Standard L2 space.
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor(false)));
@@ -130,16 +131,18 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   int num_fine = 0;
   int iterations = 0;
 
-  for(int iteration = 1;; iteration++)
+  for(int iteration = 1;iteration < 100; iteration++)
   { 
     iterations++;
-    logger.info("Iteration %i.", iteration);
+    logger_details.info("Iteration %i.", iteration);
     num_coarse++;
 
     matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
     add_means(&sln_der, &sln_der_long, space, full_space);
     matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-    vector_A_means.add_vector(cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign());
+    SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign();
+    vector_A_means.add_vector(temp_1);
+    delete temp_1;
     vector_A_means.add_vector(&vector_b_means);
     solver_means.solve();
     sln_means.set_vector(solver_means.get_sln_vector());
@@ -155,7 +158,9 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
       add_ders(&sln_means, &sln_means_long, const_space, full_space);
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
-      vector_A_der.add_vector(cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign());
+      SimpleVector<double>* temp_2 = (SimpleVector<double>*)cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign();
+      vector_A_der.add_vector(temp_2);
+      delete temp_2;
 
       matrix_A_offdiag.multiply_with_vector(sln_der.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
@@ -179,13 +184,11 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, solution, es, logger)))
+    if(error_condition(calc_l2_error(solvedExample, mesh, solution, es, logger_details)))
       break;
   }
 
   logger.info("Iterations: %i", iterations);
-  logger.info("Coarse systems solved: %i", num_coarse);
-  logger.info("Fine systems solved: %i", num_fine);
 }
 
 bool show_intermediate = false;
@@ -213,7 +216,7 @@ bool residual_condition(CSCMatrix<double>* mat, SimpleVector<double>* vec, doubl
 void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
                  double diffusivity, double time_step_length, 
                  double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, int steps)
+                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_details, int steps)
 {
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -295,9 +298,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int num_1 = 0;
   int v_cycles = 0;
 
-  for(int step = 1;; step++)
+  for(int step = 1;step < 50; step++)
   { 
-    logger.info("V-cycle %i.", step);
+    logger_details.info("V-cycle %i.", step);
     v_cycles++;
 
 #pragma region 0 - highest level
@@ -318,7 +321,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
 
         // Residual check.
-        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger, iteration, true);
+        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger_details, iteration, true);
       }
     }
 #pragma endregion
@@ -345,6 +348,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     R_P1.change_sign();
     f_P1.add_vector(&R_P1);
     f_P1.add_vector(projected_A_P_1);
+    delete projected_A_P_1;
+    delete sln_2_projected;
     f_P1.change_sign();
 
     for(int iteration = 1; iteration <= steps; iteration++)
@@ -357,6 +362,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         {
           rhs = cut_off_quadratic_part(residual_2, space_1, space_2);
           memcpy(vector_A_1.v, rhs->v, ndofs_1 * sizeof(double));
+          delete rhs;
         }
         else
         {
@@ -383,7 +389,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
 
       // Residual check.
-      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger, iteration, false);
+      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger_details, iteration, false);
     }
 #pragma endregion
 
@@ -411,7 +417,11 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     R_P0.change_sign();
     f_P0.add_vector(&R_P0);
     f_P0.add_vector(projected_A_P_0);
-    f_P0.add_vector(cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign());
+    Vector<double>* temp = cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign();
+    f_P0.add_vector(temp);
+    delete projected_A_P_0;
+    delete sln_1_projected;
+    delete temp;
     f_P0.change_sign();
 
     num_coarse++;
@@ -425,6 +435,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         {
           rhs = (SimpleVector<double>*)cut_off_linear_part(residual_1, space_0, space_1)->add_vector(cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign());
           memcpy(vector_A_0.v, rhs->v, ndofs_0 * sizeof(double));
+          delete rhs;
         }
         else
         {
@@ -454,7 +465,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       }
 
       // Residual check.
-      residual_condition(&matrix_A_0, &vector_b_0, sln_0.v, residual_0, logger, iteration, false);
+      residual_condition(&matrix_A_0, &vector_b_0, sln_0.v, residual_0, logger_details, iteration, false);
 
       if(get_l2_norm(solver_0.get_sln_vector(), space_0->get_num_dofs()) < 1e-6)
         break;
@@ -485,7 +496,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
 
       // Residual check.
-      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger, iteration, false);
+      residual_condition(&matrix_A_1, &vector_b_1, sln_1.v, residual_1, logger_details, iteration, false);
     }
 #pragma endregion
 
@@ -510,7 +521,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
         solution_view->show(previous_sln);
 
         // Residual check.
-        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger, iteration, true);
+        residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger_details, iteration, true);
       }
     }
 #pragma endregion
@@ -518,11 +529,8 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // Error & exact solution display.
     solution_view->show(previous_sln);
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger)))
+    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger_details)))
       break;
   }
   logger.info("V-cycles: %i", v_cycles);
-  logger.info("Coarse systems solved: %i", num_coarse);
-  logger.info("1 systems solved: %i", num_1);
-  logger.info("2 systems solved: %i", num_2);
 }

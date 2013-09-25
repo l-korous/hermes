@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-2;
+double diffusivity = 1e-1;
 double s = -1;
 double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
@@ -27,6 +27,7 @@ int main(int argc, char* argv[])
     diffusivity = atof(argv[2]);
   // test();
   Hermes::Mixins::Loggable logger(true);
+  Hermes::Mixins::Loggable logger_details(true);
   std::stringstream ss;
   ss << "logfile_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
   logger.set_logFile_name(ss.str());
@@ -146,9 +147,9 @@ int main(int argc, char* argv[])
   
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
-  logger.info("Exact solver");
-  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger);
-  logger.info("\n");
+  logger_details.info("Exact solver");
+  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger_details);
+  logger_details.info("\n");
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
@@ -157,7 +158,7 @@ int main(int argc, char* argv[])
     logger.info("Multiscale solver");
     logger.set_verbose_output(true);
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
-    time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger);
+    time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger, logger_details);
     logger.set_verbose_output(true);
   }
   cpu_time.tick();
@@ -170,7 +171,7 @@ int main(int argc, char* argv[])
     for(int si = 0; si < 4; si++)
     {
       cpu_time.tick();
-      if(si == 0 &&   initialRefinementsCount >= 4)
+      if(si == 0 &&   initialRefinementsCount >= 4 && diffusivity > 1.1e-3)
         continue;
       logger.info("p-Multigrid solver - %i steps", steps[si]);
 
@@ -178,7 +179,7 @@ int main(int argc, char* argv[])
   
       logger.set_verbose_output(true);
       p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution_local, diffusivity, time_step_length, time_interval_length, 
-        solution, exact_solution, &solution_view, &exact_view, s, sigma, logger, steps[si]);
+        solution, exact_solution, &solution_view, &exact_view, s, sigma, logger, logger_details, steps[si]);
       logger.set_verbose_output(true);
         
       cpu_time.tick();
@@ -186,6 +187,6 @@ int main(int argc, char* argv[])
     }
   }
   
-  View::wait();
+  //View::wait();
   return 0;
 }
