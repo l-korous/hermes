@@ -41,6 +41,7 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
   exact_solver_view->show(exact_solver_sln);
   initial_error = get_l2_norm(solver_exact.get_sln_vector(), space->get_num_dofs());
+  logger.info("Initial error: %g.", initial_error);
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, es);
 }
 
@@ -131,7 +132,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   int num_fine = 0;
   int iterations = 0;
 
-  for(int iteration = 1;iteration < 100; iteration++)
+  for(int iteration = 1;iteration < 1000; iteration++)
   { 
     iterations++;
     logger_details.info("Iteration %i.", iteration);
@@ -155,7 +156,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
       num_fine++;
 
       matrix_M_der.multiply_with_vector(sln_der.v, vector_A_der.v, true);
-
       add_ders(&sln_means, &sln_means_long, const_space, full_space);
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
       SimpleVector<double>* temp_2 = (SimpleVector<double>*)cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign();
