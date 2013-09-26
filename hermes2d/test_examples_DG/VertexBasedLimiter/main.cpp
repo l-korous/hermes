@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 2;
-int initialRefinementsCount = 3;
+int initialRefinementsCount = 6;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = CircularConvection;
 const EulerLimiterType limiter_type = VertexBased;
@@ -158,35 +158,43 @@ int main(int argc, char* argv[])
   //if(algorithm == Multiscale)
   {
     logger.info("Multiscale solver");
-    logger.set_verbose_output(true);
+    
     multiscale_decomposition(mesh, solvedExample, polynomialDegree, previous_mean_values, previous_derivatives, diffusivity, s, sigma, time_step_length,
     time_interval_length, solution, exact_solution, &solution_view, &exact_view, logger, logger_details);
-    logger.set_verbose_output(true);
+    
+    cpu_time.tick();
+    logger.info("Multiscale total: %f", cpu_time.last());
+    logger.info("\n");
   }
-  cpu_time.tick();
-  logger.info("Multiscale total: %s", cpu_time.last_str().c_str());
-  logger.info("\n");
   
   //if(algorithm == pMultigrid)
   {
-    int steps[4] = { 2, 3, 5, 10 };
-    for(int si = 0; si < 4; si++)
+    int steps[3] = { 2, 3, 5};
+    for(int si = 0; si < 3; si++)
     {
       cpu_time.tick();
-      if(si == 0 &&   initialRefinementsCount >= 4 && diffusivity > 1.1e-3)
-        continue;
       logger.info("p-Multigrid solver - %i steps", steps[si]);
 
       MeshFunctionSharedPtr<double> previous_solution_local(new ZeroSolution<double>(mesh));
   
-      logger.set_verbose_output(true);
       p_multigrid(mesh, solvedExample, polynomialDegree, previous_solution_local, diffusivity, time_step_length, time_interval_length, 
         solution, exact_solution, &solution_view, &exact_view, s, sigma, logger, logger_details, steps[si]);
-      logger.set_verbose_output(true);
         
       cpu_time.tick();
-      logger.info("p-Multigrid solver - %i steps total: %s", steps[si], cpu_time.last_str().c_str());
+      logger.info("p-Multigrid solver - %i steps total: %f", steps[si], cpu_time.last());
     }
+  }
+  
+  if(true)
+  {
+    cpu_time.tick();
+    logger.info("only Smoothing solver");
+
+    smoothing(mesh, solvedExample, polynomialDegree, previous_solution, diffusivity, time_step_length, time_interval_length, 
+      solution, exact_solution, &solution_view, &exact_view, s, sigma, logger, logger_details, 1);
+      
+    cpu_time.tick();
+    logger.info("only Smoothing total: %s", cpu_time.last_str().c_str());
   }
   
   //View::wait();

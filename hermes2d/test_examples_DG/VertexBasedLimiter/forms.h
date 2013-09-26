@@ -149,7 +149,7 @@ public:
   Ord ord(int n, double *wt, Func<Ord> *u_ext[], Func<Ord> *u, Func<Ord> *v, 
     Geom<Ord> *e, Func<Ord> **ext) const 
   {
-    return u->val[0] * v->dx[0];
+    return u->val[0] * v->dx[0] * e->nx[0];
   }
 
   MatrixFormVol<double>* clone() const
@@ -176,7 +176,7 @@ public:
 
   Ord ord(int n, double *wt, Func<Ord> *u_ext[], Func<Ord> *v, Geom<Ord> *e, Func<Ord> **ext) const 
   {
-    return ext[ext_i]->val[0] * v->dx[0] * e->x[0];
+    return ext[ext_i]->val[0] * v->dx[0] * e->nx[0];
   }
 
   VectorFormVol<double>* clone() const
@@ -268,7 +268,7 @@ public:
   Ord ord(int n, double *wt, DiscontinuousFunc<Ord> **u_ext, Func<Ord> *v,
     Geom<Ord> *e, DiscontinuousFunc<Ord> **ext) const
   {
-    return ext[ext_i]->val[0] * v->val[0];
+    return Ord(3) * ext[ext_i]->val[0] * v->val[0];
   }
 
   VectorFormDG<double>* clone() const
@@ -344,7 +344,7 @@ public:
   Ord ord(int n, double *wt, Func<Ord> **u_ext, Func<Ord> *v,
     Geom<Ord> *e, Func<Ord> **ext) const
   {
-    return ext[this->ext_bnd]->val[0] * v->val[0];
+    return ext[this->ext_bnd]->val[0] * v->val[0] * e->nx[0];
   }
 
   VectorFormSurf<double>* clone() const
@@ -415,7 +415,7 @@ public:
 
   Ord ord(int n, double *wt, Func<Ord> *u_ext[], Func<Ord> *v, Geom<Ord> *e, Func<Ord> **ext) const 
   {
-    return ext[ext_i]->val[0] * v->dx[0] * e->x[0];
+    return ext[ext_i]->val[0] * v->dx[0] * e->x[0] * Ord(3);
   }
 
   VectorFormVol<double>* clone() const
@@ -672,7 +672,7 @@ public:
   Ord ord(int n, double *wt, Func<Ord> **u_ext, Func<Ord>* u, Func<Ord> *v,
     Geom<Ord> *e, Func<Ord> **ext) const
   {
-    return u->val[0] * v->val[0] * e->x[0] * e->nx[0];
+    return u->val[0] * v->val[0] * e->x[0] * e->nx[0] * Ord(3);
   }
 
   MatrixFormSurf<double>* clone() const
@@ -713,7 +713,7 @@ public:
   Ord ord(int n, double *wt, Func<Ord> **u_ext, Func<Ord> *v,
     Geom<Ord> *e, Func<Ord> **ext) const
   {
-    return ext[this->ext_bnd]->val[0] * v->val[0] * e->nx[0];
+    return ext[this->ext_bnd]->val[0] * v->val[0] * e->nx[0] * Ord(3);
   }
 
   VectorFormSurf<double>* clone() const
