@@ -17,14 +17,16 @@ Hermes::Mixins::Loggable logger(true);
 
 double diffusivity = 1e-1;
 double s = -1;
-double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
 int main(int argc, char* argv[])
 {
   if(argc > 1)
     initialRefinementsCount = atoi(argv[1]);
   if(argc > 2)
-    diffusivity = atof(argv[2]);
+    diffusivity = (double)atof(argv[2]);
+    
+  double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
+
   // test();
   Hermes::Mixins::Loggable logger(true);
   Hermes::Mixins::Loggable logger_details(true);
@@ -148,7 +150,7 @@ int main(int argc, char* argv[])
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   logger_details.info("Exact solver");
-  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger_details);
+  solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger, logger_details);
   logger_details.info("\n");
   
   Hermes::Mixins::TimeMeasurable cpu_time;

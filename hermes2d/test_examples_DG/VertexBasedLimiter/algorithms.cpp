@@ -1,7 +1,7 @@
 #include "algorithms.h"
 
 static double exact_solver_error;
-static const double tolerance = 1e-4;
+static const double tolerance = 1e-5;
 double initial_error = -1;
 MeshFunctionSharedPtr<double> es(new Solution<double>());
 
@@ -24,10 +24,10 @@ double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFuncti
 
 bool error_condition(double error)
 {
-  return std::abs(error / initial_error) < tolerance;
+  return std::abs(error) < tolerance;
 }
 
-void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger)
+void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_detail)
 {
   MeshFunctionSharedPtr<double> exact_solver_sln(new Solution<double>());
   ScalarView* exact_solver_view = new ScalarView("Exact solver solution", new WinGeom(0, 360, 600, 350));
@@ -38,10 +38,11 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   LinearSolver<double> solver_exact(&weakform_exact, space);
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
-  exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger);
+  exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger_detail);
   exact_solver_view->show(exact_solver_sln);
   initial_error = get_l2_norm(solver_exact.get_sln_vector(), space->get_num_dofs());
   logger.info("Initial error: %g.", initial_error);
+  logger.info("Tolerance: %g.", tolerance);
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, es);
 }
 
