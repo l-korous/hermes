@@ -185,7 +185,7 @@ int main(int argc, char* argv[])
     }
   }
   
-  if(true)
+  if(false)
   {
     cpu_time.tick();
     logger.info("only Smoothing solver");

@@ -432,11 +432,14 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     R_P0.change_sign();
     f_P0.add_vector(&R_P0);
     f_P0.add_vector(projected_A_P_0);
-    Vector<double>* temp = cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign();
-    f_P0.add_vector(temp);
+    if(polynomialDegree > 1)
+    {
+      Vector<double>* temp = cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign();
+      f_P0.add_vector(temp);
+      delete temp;
+    }
     delete projected_A_P_0;
     delete sln_1_projected;
-    delete temp;
     f_P0.change_sign();
 
     num_coarse++;
@@ -462,11 +465,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       {
         // A(u_K) - done after the first step.
         matrix_A_0.multiply_with_vector(sln_0.v, vector_A_0.v, true);
-
-        if(polynomialDegree > 1)
           vector_A_0.change_sign()->add_vector(&f_P0)->add_vector(&vector_b_0);
-        else
-          vector_A_0.change_sign()->add_vector(&vector_b_0);
       }
 
       solver_0.solve();
