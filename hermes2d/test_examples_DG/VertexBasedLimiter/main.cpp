@@ -145,7 +145,7 @@ int main(int argc, char* argv[])
   // Visualization.
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));
   ScalarView exact_view("Exact solution", new WinGeom(610, 0, 600, 350));
-  exact_view.show(exact_solution);
+  //exact_view.show(exact_solution);
   
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));

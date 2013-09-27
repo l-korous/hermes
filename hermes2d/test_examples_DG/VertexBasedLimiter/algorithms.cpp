@@ -55,7 +55,7 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   solver_exact.solve();
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, exact_solver_sln);
   exact_solver_error = calc_l2_error(solvedExample, space->get_mesh(), exact_solver_sln, exact_solution, logger_detail);
-  exact_solver_view->show(exact_solver_sln);
+  // exact_solver_view->show(exact_solver_sln);
   initial_error = get_l2_norm(solver_exact.get_sln_vector(), space->get_num_dofs());
   logger.info("Initial error: %g.", initial_error);
   logger.info("Tolerance: %g.", tolerance);
@@ -201,7 +201,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
       Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
     }
 
-    solution_view->show(solution);
+    //solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
     if(error_reduction_condition(calc_l2_error_algebraic(full_space, merged_sln, es_v, logger_details)))
@@ -343,7 +343,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
         // Make solution
         Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
-        solution_view->show(previous_sln);
+        //solution_view->show(->show(previous_sln);
 
         // Residual check.
         double res = residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger_details, iteration, true);
@@ -498,7 +498,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       {
         // Make solution
         Solution<double>::vector_to_solution(&sln_0, space_0, previous_sln);
-        solution_view->show(previous_sln);
+        //solution_view->show(->show(previous_sln);
       }
 
       // Residual check.
@@ -555,7 +555,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 
         // Make solution
         Solution<double>::vector_to_solution(&sln_2, space_2, previous_sln);
-        solution_view->show(previous_sln);
+        //solution_view->show(->show(previous_sln);
 
         // Residual check.
         residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger_details, iteration, true);
@@ -564,7 +564,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 #pragma endregion
 
     // Error & exact solution display.
-    solution_view->show(previous_sln);
+    // solution_view->show(previous_sln);
 
     if(error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v, logger_details)))
       break;
@@ -638,7 +638,7 @@ void smoothing(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDe
     residual_condition(&matrix_A_2, &vector_b_2, sln_2.v, residual_2, logger_details, step, true);
 
     // Error & exact solution display.
-    solution_view->show(previous_sln);
+    //solution_view->show(->show(previous_sln);
     
     if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger_details)))
       break;
