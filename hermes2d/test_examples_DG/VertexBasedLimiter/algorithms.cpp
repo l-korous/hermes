@@ -1,9 +1,10 @@
 #include "algorithms.h"
 
 static double exact_solver_error;
-static const double tolerance = 1e-5;
+static const double tolerance = 1e-4;
 double initial_error = -1;
 MeshFunctionSharedPtr<double> es(new Solution<double>());
+double* es_v;
 
 double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFunctionSharedPtr<double> fn_1, MeshFunctionSharedPtr<double> fn_2, Hermes::Mixins::Loggable& logger)
 {
@@ -22,9 +23,24 @@ double calc_l2_error(SolvedExample solvedExample, MeshSharedPtr mesh, MeshFuncti
   return result;
 }
 
+double calc_l2_error_algebraic(SpaceSharedPtr<double> space, double* v1, double* v2, Hermes::Mixins::Loggable& logger)
+{
+  double result = 0.;
+  for(int i = 0; i < space->get_num_dofs(); i++)
+    result += (v1[i] - v2[i]) * (v1[i] - v2[i]);
+  result = std::sqrt(result);
+  logger.info("L2 Error: %g.", result);
+  return result;
+}
+
 bool error_condition(double error)
 {
   return std::abs(error) < tolerance;
+}
+
+bool error_reduction_condition(double error)
+{
+  return std::abs(error / initial_error) < tolerance;
 }
 
 void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, MeshFunctionSharedPtr<double> initial_sln, double time_step, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_detail)
@@ -44,6 +60,8 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   logger.info("Initial error: %g.", initial_error);
   logger.info("Tolerance: %g.", tolerance);
   Solution<double>::vector_to_solution(solver_exact.get_sln_vector(), space, es);
+  es_v = new double[space->get_num_dofs()];
+  memcpy(es_v, solver_exact.get_sln_vector(), sizeof(double) * space->get_num_dofs());
 }
 
 void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_mean_values, 
@@ -132,6 +150,8 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   int num_coarse = 0;
   int num_fine = 0;
   int iterations = 0;
+  
+  double* merged_sln;
 
   for(int iteration = 1;iteration < 1000; iteration++)
   { 
@@ -170,12 +190,11 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
       solver_der.solve();
       sln_der.set_vector(solver_der.get_sln_vector());
 
-      double* merged_sln = merge_slns(sln_means.v, const_space, sln_der.v, space, full_space);
+      merged_sln = merge_slns(sln_means.v, const_space, sln_der.v, space, full_space);
       //Solution<double>::vector_to_solution(sln_der.v, space, previous_derivatives);
       //solution_view->show(previous_derivatives);
       //solution_view->wait_for_keypress();
       Solution<double>::vector_to_solution(merged_sln, full_space, solution);
-      delete [] merged_sln;
     }
     else
     {
@@ -185,8 +204,12 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, solution, es, logger_details)))
+    if(error_reduction_condition(calc_l2_error_algebraic(full_space, merged_sln, es_v, logger_details)))
+    {
+      delete [] merged_sln;
       break;
+    }
+    delete [] merged_sln;
   }
 
   logger.info("Iterations: %i", iterations);
@@ -543,7 +566,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
     // Error & exact solution display.
     solution_view->show(previous_sln);
 
-    if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger_details)))
+    if(error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v, logger_details)))
       break;
   }
   logger.info("V-cycles: %i", v_cycles);
