@@ -40,10 +40,7 @@ bool only_x_der;
 
 ErrorWeakForm::ErrorWeakForm(SolvedExample solvedExample)
 {
-  if(solvedExample == Benchmark)
-    this->add_vector_form_surf(new ErrorFormSurf("Outlet"));
-  else
-    this->add_vector_form(new ErrorFormVol());
+  this->add_vector_form(new ErrorFormVol());
 }
 
 static void initialization(SolvedExample solvedExample)

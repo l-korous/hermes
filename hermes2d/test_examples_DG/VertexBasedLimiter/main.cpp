@@ -3,9 +3,9 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 2;
-int initialRefinementsCount = 6;
+int initialRefinementsCount = 4;
 const Algorithm algorithm = Multiscale;
-const SolvedExample solvedExample = CircularConvection;
+const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
 
 bool HermesView = true;
@@ -169,8 +169,8 @@ int main(int argc, char* argv[])
   
   //if(algorithm == pMultigrid)
   {
-    int steps[3] = { 2, 3, 5};
-    for(int si = 0; si < 3; si++)
+    int steps[4] = { 2, 3, 5, 10};
+    for(int si = 0; si < 4; si++)
     {
       cpu_time.tick();
       logger.info("p-Multigrid solver - %i steps", steps[si]);
