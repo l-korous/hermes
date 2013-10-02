@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 const int polynomialDegree = 2;
-int initialRefinementsCount = 4;
+int initialRefinementsCount = 5;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -15,7 +15,7 @@ double time_step_length;
 double time_interval_length;
 Hermes::Mixins::Loggable logger(true);
 
-double diffusivity = 1e-1;
+double diffusivity = 1e-15;
 double s = -1;
 
 int main(int argc, char* argv[])
@@ -155,7 +155,7 @@ int main(int argc, char* argv[])
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
-  //if(algorithm == Multiscale)
+  if(algorithm == Multiscale)
   {
     logger.info("Multiscale solver");
     
@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
     logger.info("\n");
   }
   
-  //if(algorithm == pMultigrid)
+  if(algorithm == pMultigrid)
   {
     int steps[4] = { 2, 3, 5, 10};
     for(int si = 0; si < 4; si++)

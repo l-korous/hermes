@@ -671,10 +671,17 @@ namespace Hermes
       this->v[idx] = y;
     }
 
-    template<typename Scalar>
-    void SimpleVector<Scalar>::add(unsigned int idx, Scalar y)
+    template<>
+    void SimpleVector<double>::add(unsigned int idx, double y)
     {
-#pragma omp critical (SimpleVector_add)
+#pragma omp atomic
+      this->v[idx] += y;
+    }
+
+    template<>
+    void SimpleVector<std::complex<double> >::add(unsigned int idx, std::complex<double> y)
+    {
+#pragma omp critical (complex_simpleVector_add)
       this->v[idx] += y;
     }
 
