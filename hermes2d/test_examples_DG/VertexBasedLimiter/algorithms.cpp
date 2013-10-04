@@ -156,7 +156,6 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   for(int iteration = 1;iteration < 1000; iteration++)
   { 
     iterations++;
-    logger_details.info("Iteration %i.", iteration);
     num_coarse++;
 
     matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
@@ -204,7 +203,10 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     //solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
-    if(error_reduction_condition(calc_l2_error_algebraic(full_space, merged_sln, es_v, logger_details)))
+    double error = calc_l2_error_algebraic(full_space, merged_sln, es_v, logger);
+    logger_details.info("%i %f", iteration, error);
+
+    if(error_reduction_condition(error))
     {
       delete [] merged_sln;
       break;

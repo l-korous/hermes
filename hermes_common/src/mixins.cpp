@@ -486,7 +486,7 @@ namespace Hermes
           strftime(time_buf, BUF_SZ, "%y%m%d-%H:%M", now_tm);
 
           //write
-          fprintf(file, "%s\t%s\n", time_buf, msg);
+          fprintf(file, "%s\n", msg);
           fclose(file);
 
           if(this->verbose_callback != NULL)

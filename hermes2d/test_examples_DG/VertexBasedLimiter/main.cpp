@@ -2,8 +2,8 @@
 #include "../euler_util.h"
 #include "algorithms.h"
 
-const int polynomialDegree = 2;
-int initialRefinementsCount = 5;
+const int polynomialDegree = 1;
+int initialRefinementsCount = 7;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = Benchmark;
 const EulerLimiterType limiter_type = VertexBased;
@@ -13,7 +13,6 @@ bool VTKView = false;
 
 double time_step_length;
 double time_interval_length;
-Hermes::Mixins::Loggable logger(true);
 
 double diffusivity = 1e-15;
 double s = -1;
@@ -33,6 +32,9 @@ int main(int argc, char* argv[])
   std::stringstream ss;
   ss << "logfile_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
   logger.set_logFile_name(ss.str());
+  std::stringstream ssd;
+  ssd << "logfile_detail_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
+  logger_details.set_logFile_name(ssd.str());
   
   HermesCommonApi.set_integral_param_value(numThreads, 1);
 
@@ -149,9 +151,7 @@ int main(int argc, char* argv[])
   
   // Exact solver solution
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
-  logger_details.info("Exact solver");
   solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, logger, logger_details);
-  logger_details.info("\n");
   
   Hermes::Mixins::TimeMeasurable cpu_time;
   cpu_time.tick();
