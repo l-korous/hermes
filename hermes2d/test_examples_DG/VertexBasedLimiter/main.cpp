@@ -5,7 +5,7 @@
 const int polynomialDegree = 1;
 int initialRefinementsCount = 7;
 const Algorithm algorithm = Multiscale;
-const SolvedExample solvedExample = Benchmark;
+const SolvedExample solvedExample = CircularConvection;
 const EulerLimiterType limiter_type = VertexBased;
 
 bool HermesView = true;
@@ -30,10 +30,10 @@ int main(int argc, char* argv[])
   Hermes::Mixins::Loggable logger(true);
   Hermes::Mixins::Loggable logger_details(true);
   std::stringstream ss;
-  ss << "logfile_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
+  ss << "logfile_p=" << polynomialDegree << "_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
   logger.set_logFile_name(ss.str());
   std::stringstream ssd;
-  ssd << "logfile_detail_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
+  ssd << "logfile_detail_p=" << polynomialDegree << "_" << initialRefinementsCount << "_eps=" << diffusivity << "_s=" << s << ".h2d";
   logger_details.set_logFile_name(ssd.str());
   
   HermesCommonApi.set_integral_param_value(numThreads, 1);
