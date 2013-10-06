@@ -423,9 +423,7 @@ void ExactSolutionCircularConvection::derivatives(double x, double y, double& dx
   double radius = std::sqrt(std::pow(x - 1, 2.) + std::pow(y, 2.));
   double radius_dx = (2 * x - 2.) / radius;
   double radius_dy = 2 * y / radius;
-  if(radius >= 0.2 && radius <= 0.4)
-    dx = dy = 0.;
-  else if(radius >= 0.5 && radius <= 0.8)
+  if(radius >= 0.5 && radius <= 0.8)
   {
     dx = -0.25 * std::sin(M_PI * ((radius) / 0.15)) * radius_dx;
     dx = -0.25 * std::sin(M_PI * ((radius) / 0.15)) * radius_dy;
@@ -437,9 +435,7 @@ void ExactSolutionCircularConvection::derivatives(double x, double y, double& dx
 double ExactSolutionCircularConvection::value(double x, double y) const 
 {
   double radius = std::sqrt(std::pow(x - 1, 2.) + std::pow(y, 2.));
-  if(radius >= 0.2 && radius <= 0.4)
-    return 1.;
-  else if(radius >= 0.5 && radius <= 0.8)
+  if(radius >= 0.5 && radius <= 0.8)
     return 0.25 * (1. + std::cos(M_PI * ((radius - 0.65) / 0.15)));
   else
     return 0.;

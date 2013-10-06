@@ -2,7 +2,7 @@
 #include "../euler_util.h"
 #include "algorithms.h"
 
-const int polynomialDegree = 1;
+int polynomialDegree = 2;
 int initialRefinementsCount = 7;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = CircularConvection;
@@ -23,6 +23,8 @@ int main(int argc, char* argv[])
     initialRefinementsCount = atoi(argv[1]);
   if(argc > 2)
     diffusivity = (double)atof(argv[2]);
+  if(argc > 3)
+    polynomialDegree = atoi(argv[3]);
     
   double sigma = std::pow(2., (double)(initialRefinementsCount)) * (s == -1 ? 10.0 : (s == 1 ? 10. : 0.));
 
