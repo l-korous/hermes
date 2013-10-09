@@ -153,6 +153,8 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   
   double* merged_sln;
 
+  double omega = .9;
+
   for(int iteration = 1;iteration < 1000; iteration++)
   { 
     iterations++;
@@ -187,8 +189,13 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
       vector_A_der.add_vector(&vector_b_der);
       solver_der.solve();
-      sln_der.set_vector(solver_der.get_sln_vector());
-
+      if(iteration == 1)
+        sln_der.set_vector(solver_der.get_sln_vector());
+      else
+      {
+        for(int i = 0; i < ndofs; i++)
+          sln_der.set(i, (omega * solver_der.get_sln_vector()[i]) + ((1. - omega) * sln_der.get(i)));
+      }
       merged_sln = merge_slns(sln_means.v, const_space, sln_der.v, space, full_space);
       //Solution<double>::vector_to_solution(sln_der.v, space, previous_derivatives);
       //solution_view->show(previous_derivatives);
