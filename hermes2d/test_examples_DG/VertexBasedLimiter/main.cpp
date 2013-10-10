@@ -3,7 +3,7 @@
 #include "algorithms.h"
 
 int polynomialDegree = 2;
-int initialRefinementsCount = 7;
+int initialRefinementsCount = 5;
 const Algorithm algorithm = Multiscale;
 const SolvedExample solvedExample = CircularConvection;
 const EulerLimiterType limiter_type = VertexBased;
@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
     time_interval_length = 2 * M_PI;
     break;
   case CircularConvection:
-    time_step_length = 1e0;
+    time_step_length = 128. * std::pow(2., -(double)initialRefinementsCount);
     time_interval_length = 1e4;
     break;
   case MovingPeak:

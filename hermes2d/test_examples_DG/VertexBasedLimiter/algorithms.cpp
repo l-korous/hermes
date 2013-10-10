@@ -92,6 +92,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   weakform_explicit.set_current_time_step(time_step_length);
   weakform_explicit_offdiag.set_current_time_step(time_step_length);
   CSCMatrix<double> matrix_A_full;
+  CSCMatrix<double> matrix_A_means_just_A;
   CSCMatrix<double> matrix_A_der;
   SimpleVector<double> vector_b_der;
   CSCMatrix<double> matrix_M_der;
@@ -107,6 +108,8 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   dp.set_space(full_space);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_full);
+  dp.set_space(const_space);
+  dp.assemble(&matrix_A_means_just_A);
 
   // Level 1.
   dp.set_space(space);
@@ -150,10 +153,10 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
   int num_coarse = 0;
   int num_fine = 0;
   int iterations = 0;
-  
+
   double* merged_sln;
 
-  double omega = .9;
+  double omega = 0.9;
 
   for(int iteration = 1;iteration < 1000; iteration++)
   { 
@@ -163,12 +166,26 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
     add_means(&sln_der, &sln_der_long, space, full_space);
     matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-    SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign();
-    vector_A_means.add_vector(temp_1);
-    delete temp_1;
+    if(polynomialDegree)
+    {
+      SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign();
+      vector_A_means.add_vector(temp_1);
+      delete temp_1;
+    }
     vector_A_means.add_vector(&vector_b_means);
     solver_means.solve();
     sln_means.set_vector(solver_means.get_sln_vector());
+    SimpleVector<double> a;
+    a.alloc(const_ndofs);
+    matrix_A_means_just_A.multiply_with_vector(sln_means.v, a.v, true);
+    a.change_sign()->add_vector(&vector_b_means);
+    if(polynomialDegree)
+    {
+      SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign();
+      a.add_vector(temp_1);
+      delete temp_1;
+    }
+    std::cout << "Residual: " << get_l2_norm(&a) << std::endl;
     //Solution<double>::vector_to_solution(solver_means.get_sln_vector(), const_space, previous_mean_values);
     //solution_view->show(previous_mean_values);
     //solution_view->wait_for_keypress();
@@ -189,7 +206,7 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
 
       vector_A_der.add_vector(&vector_b_der);
       solver_der.solve();
-      if(iteration == 1)
+      if(iteration == 1 || omega >= 1.)
         sln_der.set_vector(solver_der.get_sln_vector());
       else
       {
@@ -205,20 +222,23 @@ void multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, i
     else
     {
       Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
+      merged_sln = sln_means.v;
     }
 
     //solution_view->show(solution);
     //solution_view->wait_for_keypress();
 
-    double error = calc_l2_error_algebraic(full_space, merged_sln, es_v, logger);
+    double error = calc_l2_error_algebraic(polynomialDegree ? full_space : const_space, merged_sln, es_v, logger);
     logger_details.info("%i %f", iteration, error);
 
     if(error_reduction_condition(error))
     {
+    if(polynomialDegree)
       delete [] merged_sln;
       break;
     }
-    delete [] merged_sln;
+    if(polynomialDegree)
+      delete [] merged_sln;
   }
 
   logger.info("Iterations: %i", iterations);
@@ -331,7 +351,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
   int num_2 = 0;
   int num_1 = 0;
   int v_cycles = 0;
-  
+
   for(int step = 1;step < 1000; step++)
   { 
     logger_details.info("V-cycle %i.", step);
@@ -361,11 +381,11 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
           if(step > 1)
           {
             if(res > initial_residual_norm)
-              {
-                logger.info("FAILED - residual increases (unstable solution)");
-                step = 1000;
-                break;
-              }
+            {
+              logger.info("FAILED - residual increases (unstable solution)");
+              step = 1000;
+              break;
+            }
           }   
           initial_residual_norm = res;
         }
@@ -497,7 +517,7 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
       {
         // A(u_K) - done after the first step.
         matrix_A_0.multiply_with_vector(sln_0.v, vector_A_0.v, true);
-          vector_A_0.change_sign()->add_vector(&f_P0)->add_vector(&vector_b_0);
+        vector_A_0.change_sign()->add_vector(&f_P0)->add_vector(&vector_b_0);
       }
 
       solver_0.solve();
@@ -582,9 +602,9 @@ void p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomial
 }
 
 void smoothing(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, MeshFunctionSharedPtr<double> previous_sln,
-                 double diffusivity, double time_step_length, 
-                 double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
-                 ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_details, int steps)
+               double diffusivity, double time_step_length, 
+               double time_interval_length, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution, 
+               ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_details, int steps)
 {
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -628,7 +648,7 @@ void smoothing(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDe
 
   // Reports.
   int v_cycles = 0;
-  
+
   for(int step = 1;; step++)
   { 
     logger_details.info("V-cycle %i.", step);
@@ -648,7 +668,7 @@ void smoothing(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDe
 
     // Error & exact solution display.
     //solution_view->show(->show(previous_sln);
-    
+
     if(error_condition(calc_l2_error(solvedExample, mesh, previous_sln, es, logger_details)))
       break;
   }
