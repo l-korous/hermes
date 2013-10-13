@@ -176,6 +176,12 @@ ExactWeakForm::ExactWeakForm(SolvedExample solvedExample, bool add_inlet, std::s
   }
 }
 
+TimeDepWeakForm::TimeDepWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution) :   ExactWeakForm(solvedExample, add_inlet, inlet, diffusivity, s, sigma, exact_solution)
+{
+  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
+  add_vector_form(new CustomVectorFormVol(0, 0, 1.));
+}
+
 MultiscaleWeakForm::MultiscaleWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, bool local) : WeakForm<double>(1)
 {
   initialization(solvedExample);
