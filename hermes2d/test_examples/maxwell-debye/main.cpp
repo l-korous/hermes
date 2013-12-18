@@ -1,32 +1,9 @@
 #include "definitions.h"
 
-// This example shows how to model harmonic steady state in parallel plate waveguide.
-// The complex-valued Helmholtz equation is solved by decomposing it into two equations 
-// for the real and imaginary part of the E field. Two typical boundary conditions used in 
-// high-frequency problems are demonstrated.
-//
-// PDE: Helmholtz equation for electric field
-//
-//    -Laplace E  - omega^2*mu*epsilon*E + j*omega*sigma*mu*E = 0
-//
-// BC:                     Gamma_1 (perfect)
-//                   ----------------------------
-//  Gamma_3 (left)   |                           |  Gamma_4 (impedance)
-//                   ----------------------------
-//                         Gamma_2 (perfect)
-//
-//     1) Perfect conductor boundary condition Ex = 0 on Gamma_1 and Gamma_2.
-//     2) Essential (Dirichlet) boundary condition on Gamma_3
-//          Ex(y) = E_0 * cos(y*M_PI/h), where h is height of the waveguide.
-//     3) Impedance boundary condition on Gamma_4
-//          dE/dn = j*beta*E.
-//
-// The following parameters can be changed:
-
 // Initial polynomial degree of all elements.
-const int P_INIT = 4;
+const int P_INIT = 3;
 // Number of initial mesh refinements.
-const int INIT_REF_NUM = 0;
+const int INIT_REF_NUM = 3;
 
 // Problem parameters.
 // Relative permittivity.
@@ -36,9 +13,11 @@ const double eps0 = 8.85418782e-12;
 const double eps = epsr * eps0;
 // Relative permeablity.
 // Frequency MHz.
-double n = 10;
+double n = 1;
 // Angular velocity.
 double omega = M_PI * n;
+double tau = 1e-3;
+double current_time = 0.;
 
 int main(int argc, char* argv[])
 {
@@ -47,58 +26,91 @@ int main(int argc, char* argv[])
   MeshReaderH2DXML mloader;
   mloader.load("domain.xml", mesh);
 
+  ScalarView viewEtr("E_t real", new WinGeom(0, 0, 400, 200));
+  ScalarView viewEti("E_t imag", new WinGeom(0, 230, 400, 200));
+  ScalarView viewEr("E real", new WinGeom(430, 0, 400, 200));
+  ScalarView viewEi("E imag", new WinGeom(430, 230, 400, 200));
+  ScalarView viewPr("P real", new WinGeom(860, 0, 400, 200));
+  ScalarView viewPi("P imag", new WinGeom(860, 230, 400, 200));
+  viewEtr.fix_scale_width();
+  viewEti.fix_scale_width();
+  viewEr.fix_scale_width();
+  viewEi.fix_scale_width();
+  viewPr.fix_scale_width();
+  viewPi.fix_scale_width();
+
   for (int i = 0; i < INIT_REF_NUM; i++)
     mesh->refine_all_elements();
 
-  // Initialize boundary conditions
-  DefaultEssentialBCConst<double> bc1("Bdy_perfect", 0.0);
-  EssentialBCs<double> bcs(&bc1);
-  EssentialBCs<double> bcs_im(&bc1);
+  // Initial conditions.
+  MeshFunctionSharedPtr<double> et_r_sln(new CustomSolution(mesh, 0, 0., eps, omega));
+  MeshFunctionSharedPtr<double> et_i_sln(new CustomSolution(mesh, 1, 0., eps, omega));
+  MeshFunctionSharedPtr<double> e_r_sln(new CustomSolution(mesh, 2, 0., eps, omega));
+  MeshFunctionSharedPtr<double> e_i_sln(new CustomSolution(mesh, 3, 0., eps, omega));
+  MeshFunctionSharedPtr<double> p_r_sln(new CustomSolution(mesh, 4, 0., eps, omega));
+  MeshFunctionSharedPtr<double> p_i_sln(new CustomSolution(mesh, 5, 0., eps, omega));
+  Hermes::vector<MeshFunctionSharedPtr<double> > slns(et_r_sln, et_i_sln, e_r_sln, e_i_sln, p_r_sln, p_i_sln);
+
+  // Initialize boundary conditions.
+  DefaultEssentialBCNonConst<double> bc_et_r(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), et_r_sln);
+  DefaultEssentialBCNonConst<double> bc_et_i(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), et_i_sln);
+  DefaultEssentialBCNonConst<double> bc_e_r(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), e_r_sln);
+  DefaultEssentialBCNonConst<double> bc_e_i(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), e_i_sln);
+  DefaultEssentialBCNonConst<double> bc_p_r(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), p_r_sln);
+  DefaultEssentialBCNonConst<double> bc_p_i(Hermes::vector<std::string>("Bdy_left", "Bdy_impedance"), p_i_sln);
+  
+  EssentialBCs<double> bcs_et_r(&bc_et_r);
+  EssentialBCs<double> bcs_et_i(&bc_et_i);
+  EssentialBCs<double> bcs_e_r(&bc_e_r);
+  EssentialBCs<double> bcs_e_i(&bc_e_i);
+  EssentialBCs<double> bcs_p_r(&bc_p_r);
+  EssentialBCs<double> bcs_p_i(&bc_p_r);
 
   // Create an H1 space with default shapeset.
-  SpaceSharedPtr<double> e_r_space(new H1Space<double>(mesh, &bcs, P_INIT));
-  SpaceSharedPtr<double> e_i_space(new H1Space<double>(mesh, &bcs_im, P_INIT));
-  Hermes::vector<SpaceSharedPtr<double> > spaces(e_r_space, e_i_space);
+  SpaceSharedPtr<double> et_r_space(new H1Space<double>(mesh, &bcs_et_r, P_INIT));
+  SpaceSharedPtr<double> et_i_space(new H1Space<double>(mesh, &bcs_et_i, P_INIT));
+  
+  SpaceSharedPtr<double> e_r_space(new H1Space<double>(mesh, &bcs_e_r, P_INIT));
+  SpaceSharedPtr<double> e_i_space(new H1Space<double>(mesh, &bcs_e_i, P_INIT));
+
+  SpaceSharedPtr<double> p_r_space(new H1Space<double>(mesh, &bcs_p_r, P_INIT));
+  SpaceSharedPtr<double> p_i_space(new H1Space<double>(mesh, &bcs_p_i, P_INIT));
+  Hermes::vector<SpaceSharedPtr<double> > spaces(et_r_space, et_i_space, e_r_space, e_i_space, p_r_space, p_i_space);
   int ndof = Space<double>::get_num_dofs(spaces);
 
   // Initialize the weak formulation.
-  WeakFormHelmholtz wf(eps, omega, "Bdy_left", "Bdy_impedance");
+  WeakFormMD wf(eps, omega, tau, "Bdy_left", "Bdy_impedance");
+  wf.set_ext(slns);
 
-  // Initialize the solutions and solvers.
-  MeshFunctionSharedPtr<double> e_r_sln(new Solution<double>), e_i_sln(new Solution<double>);
   Hermes::Hermes2D::LinearSolver<double> solver(&wf, spaces);
+  solver.output_matrix();
+  solver.output_rhs();
 
-  // Views.
-  ScalarView viewEr("Er [V/m]", new WinGeom(600, 0, 700, 200));
-  viewEr.show_mesh(false);
-  ScalarView viewEi("Ei [V/m]", new WinGeom(600, 220, 700, 200));
-  ScalarView viewMagnitude("Magnitude of E [V/m]", new WinGeom(600, 440, 700, 200));
-  viewMagnitude.show_mesh(false);
-  viewMagnitude.show_contours(50., 0.);
-
-  try
+  for (int i = 0; i < 100; i++)
   {
-    solver.solve();
+    std::cout << "Time step: " << i << ", time; " << current_time << std::endl;
+    try
+    {
+      solver.solve();
+    }
+    catch (Hermes::Exceptions::Exception e)
+    {
+      e.print_msg();
+    };
+
+    // Translate the resulting coefficient vector into Solutions.
+    Solution<double>::vector_to_solutions(solver.get_sln_vector(), spaces, slns);
+
+    // Visualize the solution.
+    viewEtr.show(slns[0]);
+    viewEti.show(slns[1]);
+    viewEr.show(slns[2]);
+    viewEi.show(slns[3]);
+    viewPr.show(slns[4]);
+    viewPi.show(slns[5]);
+
+    current_time += tau;
   }
-  catch (Hermes::Exceptions::Exception e)
-  {
-    e.print_msg();
-  };
-
-  // Translate the resulting coefficient vector into Solutions.
-  Solution<double>::vector_to_solutions(solver.get_sln_vector(), Hermes::vector<SpaceSharedPtr<double> >(e_r_space, e_i_space),
-    Hermes::vector<MeshFunctionSharedPtr<double> >(e_r_sln, e_i_sln));
-
-  // Visualize the solution.
-  viewEr.show(e_r_sln);
-  viewEr.get_linearizer()->save_solution_tecplot(e_r_sln, "asdf.dat", "asdf");
-  // viewEr.save_screenshot("real_part.bmp");
-
-  viewEi.show(e_i_sln);
-  // viewEi.save_screenshot("imaginary_part.bmp");
-
-  MeshFunctionSharedPtr<double> magnitude(new MagFilter<double>(Hermes::vector<MeshFunctionSharedPtr<double> >(e_r_sln, e_i_sln)));
-  viewMagnitude.show(magnitude);
 
   // Wait for the view to be closed.
   View::wait();
