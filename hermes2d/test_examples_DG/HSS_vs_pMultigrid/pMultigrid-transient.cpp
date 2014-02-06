@@ -13,11 +13,14 @@ for (int step = 0; step < iteration_count; step++)
       matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
       vector_A_2.change_sign()->add_vector(&vector_b_2);
 
-      util_2.set_vector(&prev_sln_2);
-      util_2.change_sign()->add_vector(sln_2.v)->change_sign();
-      matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
+      if (is_timedep(solvedExample))
+      {
+        util_2.set_vector(&prev_sln_2);
+        util_2.change_sign()->add_vector(sln_2.v)->change_sign();
+        matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
 
-      vector_A_2.add_vector(util_21.v);
+        vector_A_2.add_vector(util_21.v);
+      }
 
       solver_2.solve();
       sln_2.add_vector(solver_2.get_sln_vector());
@@ -62,11 +65,14 @@ for (int step = 0; step < iteration_count; step++)
     else
       vector_A_1.change_sign()->add_vector(&vector_b_1);
 
-    util_1.set_vector(&prev_sln_1);
-    util_1.change_sign()->add_vector(sln_1.v)->change_sign();
-    matrix_M_1.multiply_with_vector(util_1.v, util_11.v, true);
+    if (is_timedep(solvedExample))
+    {
+      util_1.set_vector(&prev_sln_1);
+      util_1.change_sign()->add_vector(sln_1.v)->change_sign();
+      matrix_M_1.multiply_with_vector(util_1.v, util_11.v, true);
 
-    vector_A_1.add_vector(util_11.v);
+      vector_A_1.add_vector(util_11.v);
+    }
 
     solver_1.solve();
     sln_1.add_vector(solver_1.get_sln_vector());
@@ -136,11 +142,14 @@ for (int step = 0; step < iteration_count; step++)
     else
       vector_A_1.change_sign()->add_vector(&vector_b_1);
 
-    util_1.set_vector(&prev_sln_1);
-    util_1.change_sign()->add_vector(sln_1.v)->change_sign();
-    matrix_M_1.multiply_with_vector(util_1.v, util_11.v, true);
+    if (is_timedep(solvedExample))
+    {
+      util_1.set_vector(&prev_sln_1);
+      util_1.change_sign()->add_vector(sln_1.v)->change_sign();
+      matrix_M_1.multiply_with_vector(util_1.v, util_11.v, true);
 
-    vector_A_1.add_vector(util_11.v);
+      vector_A_1.add_vector(util_11.v);
+    }
 
     solver_1.solve();
     sln_1.add_vector(solver_1.get_sln_vector());
@@ -163,11 +172,14 @@ for (int step = 0; step < iteration_count; step++)
       matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
       vector_A_2.change_sign()->add_vector(&vector_b_2);
 
-      util_2.set_vector(&prev_sln_2);
-      util_2.change_sign()->add_vector(sln_2.v)->change_sign();
-      matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
+      if (is_timedep(solvedExample))
+      {
+        util_2.set_vector(&prev_sln_2);
+        util_2.change_sign()->add_vector(sln_2.v)->change_sign();
+        matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
 
-      vector_A_2.add_vector(util_21.v);
+        vector_A_2.add_vector(util_21.v);
+      }
 
       solver_2.solve();
       sln_2.add_vector(solver_2.get_sln_vector());
