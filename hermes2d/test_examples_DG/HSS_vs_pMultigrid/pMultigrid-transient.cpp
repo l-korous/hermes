@@ -45,11 +45,11 @@ for (int step = 0; step < iteration_count; step++)
   matrix_A_1.multiply_with_vector(sln_2_projected->v, f_P1.v, true);
 
   projected_A_P_1->change_sign();
+  sln_1.set_vector(sln_2_projected);
   f_P1.add_vector(projected_A_P_1);
   delete projected_A_P_1;
   delete sln_2_projected;
 
-  sln_1.set_vector(sln_2_projected);
   for (int smoothing_step = 1; smoothing_step <= smoothing_steps_per_V_cycle; smoothing_step++)
   {
     matrix_A_1.multiply_with_vector(sln_1.v, vector_A_1.v, true);
