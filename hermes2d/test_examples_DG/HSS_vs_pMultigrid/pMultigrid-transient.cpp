@@ -32,10 +32,8 @@ for (int step = 0; step < iteration_count; step++)
 #pragma region 1 - intermediate level
 
   // f_P1
-  SimpleVector<double> f_P1(ndofs_1);
-  f_P1.zero();
   // Minus A_P1
-  SimpleVector<double> R_P1(ndofs_1);
+  SimpleVector<double> f_P1(ndofs_1);
   // Minus(minus) projected_A_P1
   SimpleVector<double> projected_A_2(ndofs_2);
   matrix_A_2.multiply_with_vector(sln_2.v, projected_A_2.v, true);
@@ -44,26 +42,19 @@ for (int step = 0; step < iteration_count; step++)
     = (SimpleVector<double>*)cut_off_quadratic_part(projected_A_2.v, space_1, space_2);
 
   SimpleVector<double>* sln_2_projected = cut_off_quadratic_part(sln_2.v, space_1, space_2);
-  matrix_A_1.multiply_with_vector(sln_2_projected->v, R_P1.v, true);
+  matrix_A_1.multiply_with_vector(sln_2_projected->v, f_P1.v, true);
 
-  sln_1.set_vector(sln_2_projected);
-
-  R_P1.change_sign();
-  f_P1.add_vector(&R_P1);
+  projected_A_P_1->change_sign();
   f_P1.add_vector(projected_A_P_1);
   delete projected_A_P_1;
   delete sln_2_projected;
-  f_P1.change_sign();
 
+  sln_1.set_vector(sln_2_projected);
   for (int smoothing_step = 1; smoothing_step <= smoothing_steps_per_V_cycle; smoothing_step++)
   {
-    // A(u_K) - done after the first step.
     matrix_A_1.multiply_with_vector(sln_1.v, vector_A_1.v, true);
 
-    if (polynomialDegree > 1)
-      vector_A_1.change_sign()->add_vector(&f_P1)->add_vector(&vector_b_1);
-    else
-      vector_A_1.change_sign()->add_vector(&vector_b_1);
+    vector_A_1.change_sign()->add_vector(&f_P1)->add_vector(&vector_b_1);
 
     if (is_timedep(solvedExample))
     {
@@ -84,9 +75,7 @@ for (int step = 0; step < iteration_count; step++)
 
   // f_P0
   SimpleVector<double> f_P0(ndofs_0);
-  f_P0.zero();
   // Minus A_P0
-  SimpleVector<double> R_P0(ndofs_0);
   // Minus(minus) projected_A_P0
   SimpleVector<double> projected_A_1(ndofs_1);
   matrix_A_1.multiply_with_vector(sln_1.v, projected_A_1.v, true);
@@ -95,15 +84,14 @@ for (int step = 0; step < iteration_count; step++)
     = (SimpleVector<double>*)cut_off_linear_part(projected_A_1.v, space_0, space_1);
 
   SimpleVector<double>* sln_1_projected = cut_off_linear_part(sln_1.v, space_0, space_1);
-  matrix_A_0.multiply_with_vector(sln_1_projected->v, R_P0.v, true);
+  matrix_A_0.multiply_with_vector(sln_1_projected->v, f_P0.v, true);
 
   SimpleVector<double> projected_f_P1(ndofs_1);
   projected_f_P1.set_vector(&f_P1);
 
   sln_0.set_vector(sln_1_projected);
 
-  R_P0.change_sign();
-  f_P0.add_vector(&R_P0);
+  projected_A_P_0->change_sign();
   f_P0.add_vector(projected_A_P_0);
   if (polynomialDegree > 1)
   {
@@ -113,7 +101,6 @@ for (int step = 0; step < iteration_count; step++)
   }
   delete projected_A_P_0;
   delete sln_1_projected;
-  f_P0.change_sign();
 
   num_coarse++;
 
