@@ -4,14 +4,14 @@
 
 int polynomialDegree = 2;
 int initialRefinementsCount = 4;
-const Algorithm algorithm = Both;
-SolvedExample solvedExample = CircularConvection;
+const Algorithm algorithm = Multiscale;
+SolvedExample solvedExample = MovingPeak;
 // For the initial shape of the peak.
 const double MovingPeakDiffusivity = 1e-3;
 double diffusivity = 1e-3;
 double s = -1.;
 double sigma_star = 10.;
-double CFL = 1e-1;
+double CFL = 5e-1;
 
 Hermes::vector<int> iter_per_time_step_HSS;
 Hermes::vector<int> smoothing_steps_per_V_cycle;
@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
     solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln, time_step_length, polynomialDegree, initialRefinementsCount);
   else
     exact_solver_timedep(mesh, solvedExample, polynomialDegree, initialRefinementsCount, diffusivity, s, sigma, time_step_length, initial_sln, exact_solution, &exact_view, CFL);
-  
+
   // Global logger
   Hermes::Mixins::Loggable logger_global(true, NULL, true);
   logger_global.set_logFile_name(solvedExampleString.append(".h2d"));

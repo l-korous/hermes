@@ -13,7 +13,7 @@ MeshFunctionSharedPtr<double> es(new Solution<double>());
 double* es_v;
 
 // Uncomment to have OpenGL output throughout calculation.
-//#define SHOW_OUTPUT
+#define SHOW_OUTPUT
 
 // Under relaxation in Multiscale
 #define OMEGA 1.0
@@ -72,7 +72,8 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   exact_solver_view->show(es);
   exact_solver_view->save_screenshot(ss_bmp.str().c_str(), true);
 #endif
-  exact_solver_view->get_linearizer()->save_solution_tecplot(es, ss_vtk.str().c_str(), "solution");
+  Linearizer linearizer;
+  linearizer.save_solution_tecplot(es, ss_vtk.str().c_str(), "solution");
 }
 
 std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, int init_ref_num, MeshFunctionSharedPtr<double> previous_mean_values,
@@ -161,6 +162,11 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   SimpleVector<double> sln_der_long_temp(full_ndofs);
   SimpleVector<double> sln_der_offdiag(ndofs);
 
+  SimpleVector<double> util_means(const_ndofs);
+  util_means.zero();
+  SimpleVector<double> util_der(ndofs);
+  util_der.zero();
+
   OGProjection<double>::project_global(const_space, previous_mean_values, sln_means.v);
   OGProjection<double>::project_global(space, previous_derivatives, sln_der.v);
 
@@ -170,7 +176,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   int iterations = 0;
   double time = 0.;
 
-  double* merged_sln;
+  double* merged_sln = new double[full_ndofs];
 
   int time_step_count = (int)(is_timedep(solvedExample) ? std::ceil(end_time(solvedExample) / time_step_length) : 10000);
   int iteration_count = steps_per_time_step;
@@ -195,9 +201,9 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
       // -B
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
-      SimpleVector<double>* temp_2 = (SimpleVector<double>*)cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign();
-      vector_A_der.add_vector(temp_2);
-      delete temp_2;
+      cut_off_means(sln_means_long_temp.v, space, full_space, util_der.v);
+      util_der.change_sign();
+      vector_A_der.add_vector(&util_der);
       // (A-A~) - offdiag
       matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
@@ -216,9 +222,9 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       // -B
       add_means(&sln_der_k_tilde, &sln_der_long, space, full_space);
       matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-      SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space)->change_sign();
-      vector_A_means.add_vector(temp_1);
-      delete temp_1;
+      cut_off_ders(sln_der_long_temp.v, const_space, full_space, util_means.v);
+      util_means.change_sign();
+      vector_A_means.add_vector(&util_means);
       // b
       vector_A_means.add_vector(&vector_b_means);
       // SOLVE
@@ -234,9 +240,9 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       // -B
       add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
-      SimpleVector<double>* temp_3 = (SimpleVector<double>*)cut_off_means(sln_means_long_temp.v, space, full_space)->change_sign();
-      vector_A_der.add_vector(temp_3);
-      delete temp_3;
+      cut_off_means(sln_means_long_temp.v, space, full_space, util_der.v);
+      util_der.change_sign();
+      vector_A_der.add_vector(&util_der);
       // (A - A~) - offdiag
       matrix_A_offdiag.multiply_with_vector(sln_der_k_tilde.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
@@ -251,7 +257,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
         for (int i = 0; i < ndofs; i++)
           sln_der_k.set(i, (OMEGA * solver_der.get_sln_vector()[i]) + ((1. - OMEGA) * sln_der_k.get(i)));
       }
-      merged_sln = merge_slns(sln_means_k.v, const_space, sln_der_k.v, space, full_space);
+      merge_slns(sln_means_k.v, const_space, sln_der_k.v, space, full_space, false, merged_sln);
     }
 
     sln_means.set_vector(&sln_means_k);
@@ -280,9 +286,6 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
     }
 
     bool finish_timedep = is_timedep(solvedExample) && (time_step == time_step_count);
-
-    if (polynomialDegree && !finish_timedep)
-      delete[] merged_sln;
 
     if (done)
       break;
@@ -313,7 +316,8 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
     solution_view->show(solution);
     solution_view->save_screenshot(ss_bmp.str().c_str(), true);
 #endif
-    solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
+    Linearizer linearizer;
+    linearizer.save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
 
     errorCalculator.calculate_errors(solution, es);
 
@@ -416,13 +420,29 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   SimpleVector<double> sln_0(ndofs_0);
 
   SimpleVector<double> prev_sln_2(ndofs_2);
+  prev_sln_2.zero();
   SimpleVector<double> prev_sln_1(ndofs_1);
-  SimpleVector<double> prev_sln_0(ndofs_0);
+  prev_sln_1.zero();
+    SimpleVector<double> prev_sln_0(ndofs_0);
+  prev_sln_0.zero();
 
   SimpleVector<double> util_2(ndofs_2), util_21(ndofs_2);
   SimpleVector<double> util_1(ndofs_1), util_11(ndofs_2);
   SimpleVector<double> util_0(ndofs_0), util_01(ndofs_2);
 
+  SimpleVector<double> projected_A_P_1(ndofs_1);
+  projected_A_P_1.zero();
+  SimpleVector<double> sln_2_projected(ndofs_1);
+  sln_2_projected.zero();
+  
+  SimpleVector<double> projected_A_P_0(ndofs_1);
+  projected_A_P_0.zero();
+  SimpleVector<double> sln_1_projected(ndofs_1);
+  sln_1_projected.zero();
+
+  SimpleVector<double> f_P_1_projected(ndofs_0);
+  f_P_1_projected.zero();
+  
   // Reports.
   int num_coarse = 0;
   int num_2 = 0;
@@ -431,8 +451,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
   OGProjection<double>::project_global(space_2, previous_sln, &sln_2);
   prev_sln_2.set_vector(&sln_2);
-  prev_sln_1.set_vector(cut_off_quadratic_part(prev_sln_2.v, space_1, space_2));
-  prev_sln_0.set_vector(cut_off_linear_part(prev_sln_1.v, space_0, space_1));
+  cut_off_quadratic_part(prev_sln_2.v, space_1, space_2, prev_sln_1.v);
+  cut_off_linear_part(prev_sln_1.v, space_0, space_1, prev_sln_0.v);
 
   double time = 0.;
   int time_step_count = (int)(is_timedep(solvedExample) ? std::ceil(end_time(solvedExample) / time_step_length) : 1);
@@ -486,19 +506,17 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       SimpleVector<double> projected_A_2(ndofs_2);
       matrix_A_2.multiply_with_vector(sln_2.v, projected_A_2.v, true);
 
-      SimpleVector<double>* projected_A_P_1
-        = (SimpleVector<double>*)cut_off_quadratic_part(projected_A_2.v, space_1, space_2);
+      cut_off_quadratic_part(projected_A_2.v, space_1, space_2, projected_A_P_1.v);
 
-      SimpleVector<double>* sln_2_projected = cut_off_quadratic_part(sln_2.v, space_1, space_2);
-      matrix_A_1.multiply_with_vector(sln_2_projected->v, R_P1.v, true);
+      cut_off_quadratic_part(sln_2.v, space_1, space_2, sln_2_projected.v);
 
-      sln_1.set_vector(sln_2_projected);
+      matrix_A_1.multiply_with_vector(sln_2_projected.v, R_P1.v, true);
+
+      sln_1.set_vector(&sln_2_projected);
 
       R_P1.change_sign();
       f_P1.add_vector(&R_P1);
-      f_P1.add_vector(projected_A_P_1);
-      delete projected_A_P_1;
-      delete sln_2_projected;
+      f_P1.add_vector(&projected_A_P_1);
       f_P1.change_sign();
 
       for (int smoothing_step = 1; smoothing_step <= smoothing_steps_per_V_cycle; smoothing_step++)
@@ -536,28 +554,25 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       SimpleVector<double> projected_A_1(ndofs_1);
       matrix_A_1.multiply_with_vector(sln_1.v, projected_A_1.v, true);
 
-      SimpleVector<double>* projected_A_P_0
-        = (SimpleVector<double>*)cut_off_linear_part(projected_A_1.v, space_0, space_1);
+      cut_off_linear_part(projected_A_1.v, space_0, space_1, projected_A_P_0.v);
 
-      SimpleVector<double>* sln_1_projected = cut_off_linear_part(sln_1.v, space_0, space_1);
-      matrix_A_0.multiply_with_vector(sln_1_projected->v, R_P0.v, true);
+      cut_off_linear_part(sln_1.v, space_0, space_1, sln_1_projected.v);
+      matrix_A_0.multiply_with_vector(sln_1_projected.v, R_P0.v, true);
 
       SimpleVector<double> projected_f_P1(ndofs_1);
       projected_f_P1.set_vector(&f_P1);
 
-      sln_0.set_vector(sln_1_projected);
+      sln_0.set_vector(&sln_1_projected);
 
       R_P0.change_sign();
       f_P0.add_vector(&R_P0);
-      f_P0.add_vector(projected_A_P_0);
+      f_P0.add_vector(&projected_A_P_0);
       if (polynomialDegree > 1)
       {
-        Vector<double>* temp = cut_off_linear_part(projected_f_P1.v, space_0, space_1)->change_sign();
-        f_P0.add_vector(temp);
-        delete temp;
+        cut_off_linear_part(projected_f_P1.v, space_0, space_1, f_P_1_projected.v);
+        f_P_1_projected.change_sign();
+        f_P0.add_vector(&f_P_1_projected);
       }
-      delete projected_A_P_0;
-      delete sln_1_projected;
       f_P0.change_sign();
 
       num_coarse++;
@@ -583,9 +598,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
 #pragma region 1 - intermediate level
       // Store the previous solution.
-      double* vector_ = merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, false);
-      sln_1.set_vector(vector_);
-      delete[] vector_;
+      merge_slns(sln_0.v, space_0, sln_1.v, space_1, space_1, false, sln_1.v);
 
       for (int smoothing_step = 1; smoothing_step <= smoothing_steps_per_V_cycle; smoothing_step++)
       {
@@ -617,9 +630,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       if (polynomialDegree > 1)
       {
         // Store the previous solution.
-        double* vector_ = merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false);
-        sln_2.set_vector(vector_);
-        delete[] vector_;
+        merge_slns(sln_1.v, space_1, sln_2.v, space_2, space_2, false, sln_2.v);
 
         for (int smoothing_step = 1; smoothing_step <= smoothing_steps_per_V_cycle; smoothing_step++)
         {
@@ -691,7 +702,9 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
     ss_vtk.precision(2);
     ss_vtk.setf(std::ios_base::uppercase | std::ios_base::scientific);
     ss_vtk << "solution_" << "MG(" << V_cycles_per_time_step << "-" << smoothing_steps_per_V_cycle << ")_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
-    solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
+    
+    Linearizer linearizer;
+    linearizer.save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
 
     std::stringstream ss_bmp;
     ss_bmp.precision(2);
@@ -780,7 +793,8 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
   exact_view->show(es);
   exact_view->save_screenshot(ss_bmpe.str().c_str(), true);
 #endif
-  exact_view->get_linearizer()->save_solution_tecplot(es, ss_vtke.str().c_str(), "exactSolution", 1, 2.0);
+  Linearizer linearizer;
+  linearizer.save_solution_tecplot(es, ss_vtke.str().c_str(), "exactSolution", 1, 2.0);
 }
 
 // Utilities.

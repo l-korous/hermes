@@ -205,12 +205,12 @@ public:
 
 #pragma endregion
 
-double* merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_coarse, double* solution_vector_fine, SpaceSharedPtr<double> space_fine, SpaceSharedPtr<double> space_full, bool add = false);
-Hermes::Algebra::SimpleVector<double>* cut_off_linear_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
-Hermes::Algebra::SimpleVector<double>* cut_off_quadratic_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
+void merge_slns(double* solution_vector_coarse, SpaceSharedPtr<double> space_coarse, double* solution_vector_fine, SpaceSharedPtr<double> space_fine, SpaceSharedPtr<double> space_full, bool add, double* target);
+void cut_off_linear_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine, double* resulting_vector);
+void cut_off_quadratic_part(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine, double* resulting_vector);
 
-Hermes::Algebra::SimpleVector<double>* cut_off_means(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
-Hermes::Algebra::SimpleVector<double>* cut_off_ders(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
+void cut_off_means(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine, double* resulting_vector);
+void cut_off_ders(double* src_vector, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine, double* resulting_vector);
 
 void add_means(Hermes::Algebra::SimpleVector<double>* src, Hermes::Algebra::SimpleVector<double>* target, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
 void add_ders(Hermes::Algebra::SimpleVector<double>* src, Hermes::Algebra::SimpleVector<double>* target, SpaceSharedPtr<double> space_coarse, SpaceSharedPtr<double> space_fine);
