@@ -72,9 +72,7 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
   initialization(solvedExample);
 
   // Matrix
-  // M
-  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
-
+  
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, local));
@@ -146,9 +144,6 @@ ExactWeakFormTimedep::ExactWeakFormTimedep(SolvedExample solvedExample, bool add
 {
   initialization(solvedExample);
 
-  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
-  add_vector_form(new CustomVectorFormVol(0, 0, 1.));
-
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, false));
@@ -186,8 +181,6 @@ TimeDepWeakForm::TimeDepWeakForm(SolvedExample solvedExample, bool add_inlet, st
 MultiscaleWeakForm::MultiscaleWeakForm(SolvedExample solvedExample, bool add_inlet, std::string inlet, double diffusivity, double s, double sigma, MeshFunctionSharedPtr<double> exact_solution, bool local) : WeakForm<double>(1)
 {
   initialization(solvedExample);
-
-  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
 
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));

@@ -15,6 +15,12 @@ double* es_v;
 // Uncomment to have OpenGL output throughout calculation.
 #define SHOW_OUTPUT
 
+// Predictor in HSS
+#define USE_PREDICTOR
+
+// Crank-Nicolson (instead of Euler)
+#define CRANK_NICOLSON
+
 // Under relaxation in Multiscale
 #define OMEGA 1.0
 
@@ -81,6 +87,8 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   MeshFunctionSharedPtr<double> previous_solution, MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution,
   ScalarView* solution_view, ScalarView* exact_view, Hermes::Mixins::Loggable& logger, Hermes::Mixins::Loggable& logger_details, double cfl, int steps_per_time_step)
 {
+  bool timedepExample = is_timedep(solvedExample);
+
   // Standard L2 space.
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor(false)));
   SpaceSharedPtr<double> full_space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -104,7 +112,6 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   weakform_explicit.set_current_time_step(time_step_length);
   weakform_explicit_offdiag.set_current_time_step(time_step_length);
   CSCMatrix<double> matrix_A_full;
-  CSCMatrix<double> matrix_A_means_just_A;
   CSCMatrix<double> matrix_A_der;
   SimpleVector<double> vector_b_der;
   CSCMatrix<double> matrix_M_der;
@@ -121,24 +128,38 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   dp.set_space(full_space);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_full);
-  dp.set_space(const_space);
-  dp.assemble(&matrix_A_means_just_A);
+#ifdef CRANK_NICOLSON
+  matrix_A_full.multiply_with_Scalar(.5);
+#endif
 
   // Level 1.
   dp.set_space(space);
   dp.set_weak_formulation(&weakform_explicit);
   dp.assemble(&matrix_A_der, &vector_b_der);
+#ifdef CRANK_NICOLSON
+  matrix_A_der.multiply_with_Scalar(.5);
+#endif
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_der);
+  matrix_A_der.add_sparse_matrix(&matrix_M_der);
+
+
   dp.set_weak_formulation(&weakform_explicit_offdiag);
   dp.assemble(&matrix_A_offdiag);
+#ifdef CRANK_NICOLSON
+  matrix_A_offdiag.multiply_with_Scalar(.5);
+#endif
 
   // Level 0.
   dp.set_space(const_space);
   dp.set_weak_formulation(&weakform_implicit);
   dp.assemble(&matrix_A_means, &vector_b_means);
+#ifdef CRANK_NICOLSON
+  matrix_A_means.multiply_with_Scalar(.5);
+#endif
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_means);
+  matrix_A_means.add_sparse_matrix(&matrix_M_means);
 
   SimpleVector<double> vector_A_der(ndofs);
   SimpleVector<double> vector_A_means(const_ndofs);
@@ -163,9 +184,11 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   SimpleVector<double> sln_der_offdiag(ndofs);
 
   SimpleVector<double> util_means(const_ndofs);
-  util_means.zero();
   SimpleVector<double> util_der(ndofs);
-  util_der.zero();
+
+  SimpleVector<double> util_Crank_Nicolson_means(const_ndofs);
+  SimpleVector<double> util_Crank_Nicolson_der(ndofs);
+  SimpleVector<double> util_Crank_Nicolson_full(full_ndofs);
 
   OGProjection<double>::project_global(const_space, previous_mean_values, sln_means.v);
   OGProjection<double>::project_global(space, previous_derivatives, sln_der.v);
@@ -176,16 +199,25 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   int iterations = 0;
   double time = 0.;
 
-  double* merged_sln = new double[full_ndofs];
+  double* merged_sln = (double*)calloc(full_ndofs, sizeof(double));
 
-  int time_step_count = (int)(is_timedep(solvedExample) ? std::ceil(end_time(solvedExample) / time_step_length) : 10000);
+
+  int time_step_count = (int)(timedepExample ? std::ceil(end_time(solvedExample) / time_step_length) : 10000);
   int iteration_count = steps_per_time_step;
   for (int time_step = 1; time_step <= time_step_count; time_step++)
   {
-    if (is_timedep(solvedExample))
+    if (timedepExample)
       static_log.info("Time step: %i, time: %f.", time_step, time);
     else
       static_log.info("Time step: %i.", time_step);
+
+    // For Crank-Nicolson
+#ifdef CRANK_NICOLSON
+    matrix_A_full.multiply_with_vector(merged_sln, util_Crank_Nicolson_full.v, true);
+    util_Crank_Nicolson_full.change_sign();
+    cut_off_means(util_Crank_Nicolson_full.v, space, full_space, util_Crank_Nicolson_der.v);
+    cut_off_ders(util_Crank_Nicolson_full.v, const_space, full_space, util_Crank_Nicolson_means.v);
+#endif
 
     for (int step = 1; step <= iteration_count; step++)
     {
@@ -193,29 +225,42 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       iterations++;
 
       // 1. predictor
+#ifdef USE_PREDICTOR
       // M
-      if (is_timedep(solvedExample))
+      if (timedepExample)
         matrix_M_der.multiply_with_vector(sln_der.v, vector_A_der.v, true);
       else
         matrix_M_der.multiply_with_vector(sln_der_k.v, vector_A_der.v, true);
-      add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
+
       // -B
+      add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
       cut_off_means(sln_means_long_temp.v, space, full_space, util_der.v);
       util_der.change_sign();
       vector_A_der.add_vector(&util_der);
+
       // (A-A~) - offdiag
       matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
+
+      // Crank-Nicolson
+#ifdef CRANK_NICOLSON
+      vector_A_der.add_vector(&util_Crank_Nicolson_der);
+#endif
+
       // b'
       vector_A_der.add_vector(&vector_b_der);
+
       // SOLVE
       solver_der.solve();
       sln_der_k_tilde.set_vector(solver_der.get_sln_vector());
+#else
+      sln_der_k_tilde.set_vector(&sln_der_k);
+#endif
 
       // 2. means
       // M
-      if (is_timedep(solvedExample))
+      if (timedepExample)
         matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
       else
         matrix_M_means.multiply_with_vector(sln_means_k.v, vector_A_means.v, true);
@@ -225,31 +270,47 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       cut_off_ders(sln_der_long_temp.v, const_space, full_space, util_means.v);
       util_means.change_sign();
       vector_A_means.add_vector(&util_means);
+
+      // Crank-Nicolson
+#ifdef CRANK_NICOLSON
+      vector_A_means.add_vector(&util_Crank_Nicolson_means);
+#endif
+
       // b
       vector_A_means.add_vector(&vector_b_means);
+
       // SOLVE
       solver_means.solve();
       sln_means_k.set_vector(solver_means.get_sln_vector());
 
       // 3. corrector
       // M
-      if (is_timedep(solvedExample))
+      if (timedepExample)
         matrix_M_der.multiply_with_vector(sln_der.v, vector_A_der.v, true);
       else
         matrix_M_der.multiply_with_vector(sln_der_k.v, vector_A_der.v, true);
+
       // -B
       add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
       matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
       cut_off_means(sln_means_long_temp.v, space, full_space, util_der.v);
       util_der.change_sign();
       vector_A_der.add_vector(&util_der);
+
       // (A - A~) - offdiag
       matrix_A_offdiag.multiply_with_vector(sln_der_k_tilde.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
+
+      // Crank-Nicolson
+#ifdef CRANK_NICOLSON
+      vector_A_der.add_vector(&util_Crank_Nicolson_der);
+#endif
+
       // b
       vector_A_der.add_vector(&vector_b_der);
       // SOLVE
       solver_der.solve();
+
       if (OMEGA >= 0.99)
         sln_der_k.set_vector(solver_der.get_sln_vector());
       else
@@ -257,6 +318,8 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
         for (int i = 0; i < ndofs; i++)
           sln_der_k.set(i, (OMEGA * solver_der.get_sln_vector()[i]) + ((1. - OMEGA) * sln_der_k.get(i)));
       }
+
+      // Merge the two solutions.
       merge_slns(sln_means_k.v, const_space, sln_der_k.v, space, full_space, false, merged_sln);
     }
 
@@ -272,9 +335,9 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
     solution_view->show(solution);
 #endif
 
-    bool done = !is_timedep(solvedExample) && error_reduction_condition(calc_l2_error_algebraic(polynomialDegree ? full_space : const_space, merged_sln, es_v, &logger_details, time_step, init_ref_num, diffusivity));
+    bool done = !timedepExample && error_reduction_condition(calc_l2_error_algebraic(polynomialDegree ? full_space : const_space, merged_sln, es_v, &logger_details, time_step, init_ref_num, diffusivity));
 
-    if (is_timedep(solvedExample))
+    if (timedepExample)
     {
       if (time + time_step_length > end_time(solvedExample))
       {
@@ -285,7 +348,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
         time += time_step_length;
     }
 
-    bool finish_timedep = is_timedep(solvedExample) && (time_step == time_step_count);
+    bool finish_timedep = timedepExample && (time_step == time_step_count);
 
     if (done)
       break;
@@ -293,7 +356,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
 
   std::stringstream outStream;
   outStream << iterations;
-  if (is_timedep(solvedExample))
+  if (timedepExample)
   {
     DefaultErrorCalculator<double, HERMES_L2_NORM> errorCalculator(RelativeErrorToGlobalNorm, 1);
 
@@ -332,6 +395,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   MeshFunctionSharedPtr<double> solution, MeshFunctionSharedPtr<double> exact_solution,
   ScalarView* solution_view, ScalarView* exact_view, double s, double sigma, Hermes::Mixins::Loggable& logger, int smoothing_steps_per_V_cycle, double cfl, int V_cycles_per_time_step)
 {
+  bool timedepExample = is_timedep(solvedExample);
+
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
   int ndofs_2 = space_2->get_num_dofs();
@@ -359,9 +424,9 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   weakform_smoother_coarse.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   MassWeakForm weakform_mass;
 
-  CSCMatrix<double> matrix_MA_tilde_2;
+  CSCMatrix<double> matrix_A_tilde_2;
   SimpleVector<double> vector_A_2(ndofs_2);
-  CSCMatrix<double> matrix_MA_tilde_1;
+  CSCMatrix<double> matrix_A_tilde_1;
   SimpleVector<double> vector_A_1(ndofs_1);
   CSCMatrix<double> matrix_MA_0;
   SimpleVector<double> vector_A_0(ndofs_0);
@@ -378,18 +443,28 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_2, &vector_b_2);
   dp.set_weak_formulation(&weakform_smoother);
-  dp.assemble(&matrix_MA_tilde_2);
+  dp.assemble(&matrix_A_tilde_2);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_2);
+#ifdef CRANK_NICOLSON
+  matrix_A_2.multiply_with_Scalar(.5);
+  matrix_A_tilde_2.multiply_with_Scalar(.5);
+#endif
+  matrix_A_tilde_2.add_sparse_matrix(&matrix_M_2);
 
   // Level 1.
   dp.set_space(space_1);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_1, &vector_b_1);
   dp.set_weak_formulation(&weakform_smoother);
-  dp.assemble(&matrix_MA_tilde_1);
+  dp.assemble(&matrix_A_tilde_1);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_1);
+#ifdef CRANK_NICOLSON
+  matrix_A_1.multiply_with_Scalar(.5);
+  matrix_A_tilde_1.multiply_with_Scalar(.5);
+#endif
+  matrix_A_tilde_1.add_sparse_matrix(&matrix_M_1);
 
   // Level 0.
   dp.set_space(space_0);
@@ -399,11 +474,16 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   dp.assemble(&matrix_MA_0);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_0);
+#ifdef CRANK_NICOLSON
+  matrix_A_0.multiply_with_Scalar(.5);
+  matrix_MA_0.multiply_with_Scalar(.5);
+#endif
+  matrix_MA_0.add_sparse_matrix(&matrix_M_0);
 
-  UMFPackLinearMatrixSolver<double> solver_2(&matrix_MA_tilde_2, &vector_A_2);
+  UMFPackLinearMatrixSolver<double> solver_2(&matrix_A_tilde_2, &vector_A_2);
   solver_2.setup_factorization();
   solver_2.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
-  UMFPackLinearMatrixSolver<double> solver_1(&matrix_MA_tilde_1, &vector_A_1);
+  UMFPackLinearMatrixSolver<double> solver_1(&matrix_A_tilde_1, &vector_A_1);
   solver_1.setup_factorization();
   solver_1.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
   UMFPackLinearMatrixSolver<double> solver_0(&matrix_MA_0, &vector_A_0);
@@ -423,26 +503,30 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   prev_sln_2.zero();
   SimpleVector<double> prev_sln_1(ndofs_1);
   prev_sln_1.zero();
-    SimpleVector<double> prev_sln_0(ndofs_0);
+  SimpleVector<double> prev_sln_0(ndofs_0);
   prev_sln_0.zero();
 
   SimpleVector<double> util_2(ndofs_2), util_21(ndofs_2);
   SimpleVector<double> util_1(ndofs_1), util_11(ndofs_2);
   SimpleVector<double> util_0(ndofs_0), util_01(ndofs_2);
 
+  SimpleVector<double> util_Crank_Nicolson_2(ndofs_2);
+  SimpleVector<double> util_Crank_Nicolson_1(ndofs_1);
+  SimpleVector<double> util_Crank_Nicolson_0(ndofs_0);
+
   SimpleVector<double> projected_A_P_1(ndofs_1);
   projected_A_P_1.zero();
   SimpleVector<double> sln_2_projected(ndofs_1);
   sln_2_projected.zero();
-  
-  SimpleVector<double> projected_A_P_0(ndofs_1);
+
+  SimpleVector<double> projected_A_P_0(ndofs_0);
   projected_A_P_0.zero();
-  SimpleVector<double> sln_1_projected(ndofs_1);
+  SimpleVector<double> sln_1_projected(ndofs_0);
   sln_1_projected.zero();
 
   SimpleVector<double> f_P_1_projected(ndofs_0);
   f_P_1_projected.zero();
-  
+
   // Reports.
   int num_coarse = 0;
   int num_2 = 0;
@@ -455,14 +539,22 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   cut_off_linear_part(prev_sln_1.v, space_0, space_1, prev_sln_0.v);
 
   double time = 0.;
-  int time_step_count = (int)(is_timedep(solvedExample) ? std::ceil(end_time(solvedExample) / time_step_length) : 1);
-  int iteration_count = (int)(is_timedep(solvedExample) ? V_cycles_per_time_step : 10000);
+  int time_step_count = (int)(timedepExample ? std::ceil(end_time(solvedExample) / time_step_length) : 1);
+  int iteration_count = (int)(timedepExample ? V_cycles_per_time_step : 10000);
   for (int time_step = 1; time_step <= time_step_count; time_step++)
   {
-    if (is_timedep(solvedExample))
+    if (timedepExample)
       static_log.info("Time step: %i, time: %f.", time_step, time);
     else
       static_log.info("Time step: %i.", time_step);
+
+    // For Crank-Nicolson
+#ifdef CRANK_NICOLSON
+    matrix_A_2.multiply_with_vector(sln_2.v, util_Crank_Nicolson_2.v, true);
+    util_Crank_Nicolson_2.change_sign();
+    cut_off_quadratic_part(util_Crank_Nicolson_2.v, space_1, space_2, util_Crank_Nicolson_1.v);
+    cut_off_linear_part(util_Crank_Nicolson_1.v, space_0, space_1, util_Crank_Nicolson_0.v);
+#endif
 
     for (int step = 0; step < iteration_count; step++)
     {
@@ -477,9 +569,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
         {
           // Solve for increment.
           matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
-          vector_A_2.change_sign()->add_vector(&vector_b_2);
+          vector_A_2.change_sign();
+          vector_A_2.add_vector(&vector_b_2);
 
-          if (is_timedep(solvedExample))
+          if (timedepExample)
           {
             util_2.set_vector(&prev_sln_2);
             util_2.change_sign()->add_vector(sln_2.v)->change_sign();
@@ -487,6 +580,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
             vector_A_2.add_vector(util_21.v);
           }
+
+#ifdef CRANK_NICOLSON
+          vector_A_2.add_vector(util_Crank_Nicolson_2.v);
+#endif
 
           solver_2.solve();
           sln_2.add_vector(solver_2.get_sln_vector());
@@ -528,7 +625,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
         else
           vector_A_1.change_sign()->add_vector(&vector_b_1);
 
-        if (is_timedep(solvedExample))
+        if (timedepExample)
         {
           util_1.set_vector(&prev_sln_1);
           util_1.change_sign()->add_vector(sln_1.v)->change_sign();
@@ -536,6 +633,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
           vector_A_1.add_vector(util_11.v);
         }
+
+#ifdef CRANK_NICOLSON
+        vector_A_1.add_vector(util_Crank_Nicolson_1.v);
+#endif
 
         solver_1.solve();
         sln_1.add_vector(solver_1.get_sln_vector());
@@ -562,8 +663,6 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       SimpleVector<double> projected_f_P1(ndofs_1);
       projected_f_P1.set_vector(&f_P1);
 
-      sln_0.set_vector(&sln_1_projected);
-
       R_P0.change_sign();
       f_P0.add_vector(&R_P0);
       f_P0.add_vector(&projected_A_P_0);
@@ -577,19 +676,23 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
       num_coarse++;
 
-      // A(u_K) - done after the first step.
-      if (is_timedep(solvedExample))
+      if (timedepExample)
       {
         matrix_M_0.multiply_with_vector(prev_sln_0.v, vector_A_0.v, true);
         vector_A_0.add_vector(&f_P0)->add_vector(&vector_b_0);
       }
       else
       {
-        matrix_A_0.multiply_with_vector(sln_0.v, vector_A_0.v, true);
+        matrix_A_0.multiply_with_vector(sln_1_projected.v, vector_A_0.v, true);
         vector_A_0.change_sign()->add_vector(&f_P0)->add_vector(&vector_b_0);
       }
+
+#ifdef CRANK_NICOLSON
+      vector_A_0.add_vector(util_Crank_Nicolson_0.v);
+#endif
+
       solver_0.solve();
-      if (is_timedep(solvedExample))
+      if (timedepExample)
         sln_0.set_vector(solver_0.get_sln_vector());
       else
         sln_0.add_vector(solver_0.get_sln_vector());
@@ -610,7 +713,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
         else
           vector_A_1.change_sign()->add_vector(&vector_b_1);
 
-        if (is_timedep(solvedExample))
+        if (timedepExample)
         {
           util_1.set_vector(&prev_sln_1);
           util_1.change_sign()->add_vector(sln_1.v)->change_sign();
@@ -618,6 +721,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
           vector_A_1.add_vector(util_11.v);
         }
+
+#ifdef CRANK_NICOLSON
+        vector_A_1.add_vector(util_Crank_Nicolson_1.v);
+#endif
 
         solver_1.solve();
         sln_1.add_vector(solver_1.get_sln_vector());
@@ -638,13 +745,17 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
           matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
           vector_A_2.change_sign()->add_vector(&vector_b_2);
 
-          if (is_timedep(solvedExample))
+          if (timedepExample)
           {
             util_2.set_vector(&prev_sln_2);
             util_2.change_sign()->add_vector(sln_2.v)->change_sign();
             matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
             vector_A_2.add_vector(util_21.v);
           }
+
+#ifdef CRANK_NICOLSON
+          vector_A_2.add_vector(util_Crank_Nicolson_2.v);
+#endif
 
           solver_2.solve();
           sln_2.add_vector(solver_2.get_sln_vector());
@@ -659,22 +770,11 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       solution_view->show(previous_sln);
 #endif
 
-      if (is_timedep(solvedExample))
-      {
-        if (time + time_step_length > end_time(solvedExample))
-        {
-          time_step_length = end_time(solvedExample) - time;
-          time = end_time(solvedExample);
-        }
-      }
-
-      time += time_step_length;
-
-      if (!is_timedep(solvedExample) && error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v)))
+      if (!timedepExample && error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v)))
         break;
     }
 
-    if (is_timedep(solvedExample))
+    if (timedepExample)
     {
       if (time + time_step_length > end_time(solvedExample))
       {
@@ -692,7 +792,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 
   std::stringstream outStream;
   outStream << v_cycles;
-  if (is_timedep(solvedExample))
+  if (timedepExample)
   {
     DefaultErrorCalculator<double, HERMES_L2_NORM> errorCalculator(RelativeErrorToGlobalNorm, 1);
 
@@ -702,7 +802,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
     ss_vtk.precision(2);
     ss_vtk.setf(std::ios_base::uppercase | std::ios_base::scientific);
     ss_vtk << "solution_" << "MG(" << V_cycles_per_time_step << "-" << smoothing_steps_per_V_cycle << ")_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
-    
+
     Linearizer linearizer;
     linearizer.save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
 
@@ -725,7 +825,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, int init_ref_num, double diffusivity, double s, double sigma, double time_step_length,
   MeshFunctionSharedPtr<double> previous_solution, MeshFunctionSharedPtr<double> exact_solution, ScalarView* exact_view, double cfl)
 {
-  if (!is_timedep(solvedExample))
+  bool timedepExample = is_timedep(solvedExample);
+  if (!timedepExample)
     return;
 
   // Standard L2 space.
@@ -735,30 +836,56 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
   // Matrices A, vectors b.
   ExactWeakFormTimedep weakform_exact(solvedExample, add_inlet(solvedExample), "Inlet", diffusivity, s, sigma, exact_solution);
   weakform_exact.set_current_time_step(time_step_length);
-  weakform_exact.set_ext(previous_solution);
+  MassWeakForm weakform_timedep;
+  weakform_timedep.set_current_time_step(time_step_length);
   CSCMatrix<double> matrix_A;
+  CSCMatrix<double> matrix_M;
+  CSCMatrix<double> matrix_MA;
+
   SimpleVector<double> vector_b;
+  SimpleVector<double> rhs(full_ndofs);
 
   // Assembler.
   DiscreteProblem<double> dp;
   dp.set_global_integration_order(integrationOrder);
   // Level 2.
   dp.set_space(full_space);
+  dp.set_weak_formulation(&weakform_timedep);
+  dp.assemble(&matrix_M);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A);
+  dp.assemble(&matrix_MA);
+  dp.assemble(&vector_b);
+#ifdef CRANK_NICOLSON
+  matrix_A.multiply_with_Scalar(.5);
+  matrix_MA.multiply_with_Scalar(.5);
+#endif
+  matrix_MA.add_sparse_matrix(&matrix_M);
 
-  UMFPackLinearMatrixSolver<double> solver(&matrix_A, &vector_b);
+  UMFPackLinearMatrixSolver<double> solver(&matrix_MA, &rhs);
   solver.setup_factorization();
   solver.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
 
-  // Reporting.
+  double* previous_vector = (double*)calloc(full_ndofs, sizeof(double));
+  OGProjection<double>::project_global(full_space, previous_solution, previous_vector);
+#ifdef CRANK_NICOLSON
+  SimpleVector<double> vector_Crank_Nicolson(full_ndofs);
+#endif
 
   double time = 0.;
   int iteration_count = std::ceil(end_time(solvedExample) / time_step_length);
   for (int iteration = 0; iteration <= iteration_count; ++iteration)
   {
-    dp.assemble(&vector_b);
+    matrix_M.multiply_with_vector(previous_vector, rhs.v, true);
+    rhs.add_vector(&vector_b);
+#ifdef CRANK_NICOLSON
+    matrix_A.multiply_with_vector(previous_vector, vector_Crank_Nicolson.v, true);
+    vector_Crank_Nicolson.change_sign();
+    rhs.add_vector(&vector_Crank_Nicolson);
+#endif
+
     solver.solve();
+    previous_vector = solver.get_sln_vector();
     Solution<double>::vector_to_solution(solver.get_sln_vector(), full_space, previous_solution);
     static_log.info("Time step: %i, time: %f.", iteration, time);
 
@@ -766,7 +893,7 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
     exact_view->show(previous_solution);
 #endif
 
-    if (is_timedep(solvedExample))
+    if (timedepExample)
     {
       if (time + time_step_length > end_time(solvedExample))
       {

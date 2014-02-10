@@ -4,14 +4,14 @@
 
 int polynomialDegree = 2;
 int initialRefinementsCount = 4;
-const Algorithm algorithm = Multiscale;
+const Algorithm algorithm = Both;
 SolvedExample solvedExample = MovingPeak;
 // For the initial shape of the peak.
 const double MovingPeakDiffusivity = 1e-3;
 double diffusivity = 1e-3;
 double s = -1.;
 double sigma_star = 10.;
-double CFL = 5e-1;
+double CFL = 1e-1;
 
 Hermes::vector<int> iter_per_time_step_HSS;
 Hermes::vector<int> smoothing_steps_per_V_cycle;
