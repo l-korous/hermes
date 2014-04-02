@@ -349,7 +349,7 @@ double ExactSolutionCircularConvection::value(double x, double y) const
 
 Ord ExactSolutionCircularConvection::ord(double x, double y) const 
 {
-  return Ord(20);
+  return Ord(24);
 };
 MeshFunction<double>* ExactSolutionCircularConvection::clone() const
 {
