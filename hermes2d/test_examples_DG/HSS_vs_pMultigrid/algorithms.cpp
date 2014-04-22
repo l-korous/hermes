@@ -13,7 +13,7 @@ MeshFunctionSharedPtr<double> es(new Solution<double>());
 double* es_v;
 
 // Uncomment to have OpenGL output throughout calculation.
-// #define SHOW_OUTPUT
+#define SHOW_OUTPUT
 
 // Under relaxation in Multiscale
 #define OMEGA 1.0
@@ -283,7 +283,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   int iterations = 0;
   double time = 0.;
 
-  double* merged_sln;
+  double* merged_sln = new double[full_ndofs];
 
   SimpleVector<double> temp_1(const_ndofs);
   SimpleVector<double> temp_2(ndofs);
@@ -360,9 +360,6 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
     bool done=error_reduction_condition(calc_l2_error_algebraic(polynomialDegree ? full_space : const_space, 
                                                                 merged_sln, es_v, &logger_details, 
                                                                 iterations, init_ref_num, diffusivity));
-    if (polynomialDegree)
-      delete [] merged_sln;
-
     if (done)
       break;
   } while(true);
@@ -584,10 +581,8 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
 #ifdef SHOW_OUTPUT
     if (polynomialDegree)
     {
-      merged_sln=merge_slns(sln_means.v, const_space, sln_der.v, space, full_space);
+      merge_slns(sln_means.v, const_space, sln_der.v, space, full_space, false, merged_sln);
       Solution<double>::vector_to_solution(merged_sln, full_space, solution);
-      if (time_step < time_step_count)
-        delete[] merged_sln;
     }
     else
       Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
@@ -607,7 +602,6 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   {
     merge_slns(sln_means.v, const_space, sln_der.v, space, full_space, false, merged_sln);
     Solution<double>::vector_to_solution(merged_sln, full_space, solution);
-    delete[] merged_sln;
   }
   else
     Solution<double>::vector_to_solution(sln_means.v, const_space, solution);

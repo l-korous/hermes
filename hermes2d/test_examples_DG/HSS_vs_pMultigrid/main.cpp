@@ -4,7 +4,7 @@
 #include "algorithms.h"
 
 int polynomialDegree = 2;
-int initialRefinementsCount = 0;
+int initialRefinementsCount = 3;
 const Algorithm algorithm = Multiscale;
 SolvedExample solvedExample = CircularConvection;
 // For the initial shape of the peak.
@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
     Hermes::Mixins::Loggable logger_details(true);
     logger_details.set_timestamps(false);
     logger_details.set_erase_on_beginning(true);
-    logger_details.set_file_output_only(true);
+    logger_details.set_file_output_only(false);
 
     // All variants
     for (int si = 0; si < iter_per_time_step_HSS.size(); si++)
