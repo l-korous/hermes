@@ -496,7 +496,7 @@ namespace Hermes
       /// \param[in/out] n_elements Size of the array.
       /// \param[in] marker The marker
       /// \param[in] n_element_guess(optional) Approximate number of elements that will be in this method. Used as an allocation hint. -1 for not-known.
-      static void get_egg_shell_structures(MeshSharedPtr target_mesh, Element**& elements, int& n_elements, Hermes::vector<std::string> markers, unsigned int levels, int n_element_guess = -1);
+      static void get_egg_shell_structures(MeshSharedPtr target_mesh, Element**& elements, int& n_elements, Hermes::vector<std::string> markers, unsigned int levels, int*& neighbor_targets_local, int n_element_guess = -1);
 
       /// Internal.
       /// Return the "Egg-shell" mesh.
@@ -504,7 +504,7 @@ namespace Hermes
       /// \param[in/out] mesh The target mesh
       /// \param[in] elements The array from get_egg_shell_structures.
       /// \param[in] n_elements Size of the array from get_egg_shell_structures.
-      static void make_egg_shell_mesh(MeshSharedPtr target_mesh, Element** elements, int n_elements);
+      static void make_egg_shell_mesh(MeshSharedPtr target_mesh, Element** elements, int n_elements, int* neighbor_targets_local, int levels);
 
       /// Internal.
       /// Handle hanging nodes.
