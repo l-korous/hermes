@@ -21,7 +21,6 @@
 #include "neighbor_search.h"
 #include "mixins.h"
 #include "forms.h"
-#include "views/mesh_view.h"
 
 namespace Hermes
 {
@@ -2808,10 +2807,6 @@ namespace Hermes
       int eggShell_marker_1 = target_mesh->get_boundary_markers_conversion().get_internal_marker(eggShell1Marker).marker;
       int eggShell_marker_0 = target_mesh->get_boundary_markers_conversion().insert_marker(eggShell0Marker);
       int eggShell_marker_volume = target_mesh->get_element_markers_conversion().insert_marker(eggShellMarker);
-      
-      Views::MeshView m;
-      m.show(target_mesh);
-      m.wait_for_close();
       
       for_all_active_elements(e, target_mesh)
       {
