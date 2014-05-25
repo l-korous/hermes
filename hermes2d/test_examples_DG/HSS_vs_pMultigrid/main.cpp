@@ -4,15 +4,15 @@
 #include "algorithms.h"
 
 int polynomialDegree = 2;
-int initialRefinementsCount = 3;
+int initialRefinementsCount = 4;
 const Algorithm algorithm = Multiscale;
 SolvedExample solvedExample = CircularConvection;
 // For the initial shape of the peak.
 const double MovingPeakDiffusivity = 1.e-3;
-double diffusivity = 0.e-2;
+double diffusivity = 0e-1;
 double s = -1.;
-double sigma_star = 2.;
-double CFL = 1.;
+double sigma_star = 10.;
+double CFL = 1e-1;
 
 Hermes::vector<int> iter_per_time_step_HSS;
 Hermes::vector<int> smoothing_steps_per_V_cycle;
@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
 
   // Load the mesh & set mesh size for CFL -> time step length calculation.
   double mesh_size;
-  int time_step_count=INT_MAX;  // Infinite number of time steps for stationary problems
+  int time_step_count = INT_MAX;  // Infinite number of time steps for stationary problems
   double time_step_length = CFL * std::pow(2., -(double)initialRefinementsCount);
   MeshSharedPtr mesh(new Mesh);
   MeshReaderH2DXML mloader;
@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
     for(int i = 0; i < initialRefinementsCount; i++)
       mesh->refine_all_elements();
     mesh_size = 1.;
-    time_step_length=mesh_size * CFL * std::pow(2., -(double)initialRefinementsCount);    
+    time_step_length= mesh_size * CFL * std::pow(2., -(double)initialRefinementsCount);    
     break;
   case MovingPeak:
     mloader.load("domain.xml", mesh);

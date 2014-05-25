@@ -262,20 +262,18 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   solver_der.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
 
   // Utils.
-  SimpleVector<double> sln_means(const_ndofs);
   SimpleVector<double> sln_means_k(const_ndofs);
-  SimpleVector<double> sln_means_tmp(const_ndofs);
-  SimpleVector<double> sln_means_long(full_ndofs);
-  SimpleVector<double> sln_means_long_temp(full_ndofs);
-  SimpleVector<double> sln_der(ndofs);
+  SimpleVector<double> sln_means_k_long(full_ndofs);
+  SimpleVector<double> A_times_sln_means_k_long(full_ndofs);
   SimpleVector<double> sln_der_k(ndofs);
-  SimpleVector<double> sln_der_tmp(ndofs);
-  SimpleVector<double> sln_der_long(full_ndofs);
-  SimpleVector<double> sln_der_long_temp(full_ndofs);
+  SimpleVector<double> sln_der_k_long(full_ndofs);
+  SimpleVector<double> A_times_sln_der_k_long(full_ndofs);
   SimpleVector<double> sln_der_offdiag(ndofs);
+  // For residual calculation
+  SimpleVector<double> A_times_u(full_ndofs);
 
-  OGProjection<double>::project_global(const_space, previous_mean_values, sln_means.v);
-  OGProjection<double>::project_global(space, previous_derivatives, sln_der.v);
+  OGProjection<double>::project_global(const_space, previous_mean_values, sln_means_k.v);
+  OGProjection<double>::project_global(space, previous_derivatives, sln_der_k.v);
 
   // Reporting.
   int num_coarse = 0;
@@ -288,78 +286,119 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   SimpleVector<double> temp_1(const_ndofs);
   SimpleVector<double> temp_2(ndofs);
 
+  // In the following:
+  // u0 - means
+  // u0_prev - means from previous iteration
+  // u* - derivatives
+  // u*_prev - derivatives from previous iteration
+  // sln_der_k_long - prolongated (added 0s for means DOFs) derivatives from previous iteration
+  // A_times_sln_der_k_long - prolongated (added 0s for means DOFs) derivatives from previous iteration
+  // sln_means_k_long - prolongated (added 0s for derivatives DOFs) means from previous iteration
+  // A_times_sln_means_k_long - prolongated (added 0s for derivatives DOFs) means from previous iteration
+  // M0 - mass matrix for means
+  // M* - mass matrix for derivatives
+  // M - mass matrix for the complete system
+  // A - the full (implicit) A matrix for the complete system
+  // A0 - the full (implicit) A matrix for the means
+  // A* - the full (implicit) A matrix for the derivatives (not really used)
+  // A*~ - only the diagonal (explicit) part of the A matrix for the derivatives
+  // b0 - RHS for means
+  // b* - RHS for derivatives
   do
   {
     iterations++;
-    // 2. means
-    // M
+    // 1. means
+    // M0 * u0_prev -> vector_A_means (utility variable)
     matrix_M_means.multiply_with_vector(sln_means_k.v, vector_A_means.v, true);
-    // -B
-    add_means(&sln_der_k, &sln_der_long, space, full_space);
-    matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-    cut_off_ders(sln_der_long_temp.v, const_space, full_space, temp_1.v);
-    temp_1.change_sign();
-    vector_A_means.add_vector(&temp_1);
-    // b
+    if (polynomialDegree)
+    {
+      // Prolongate u*_prev -> sln_der_k_long
+      add_means(&sln_der_k, &sln_der_k_long, space, full_space);
+      // A * sln_der_k_long -> A_times_sln_der_k_long
+      matrix_A_full.multiply_with_vector(sln_der_k_long.v, A_times_sln_der_k_long.v, true);
+      // Restrict (take out derivatives DOFs) A_times_sln_der_k_long -> temp_1.
+      cut_off_ders(A_times_sln_der_k_long.v, const_space, full_space, temp_1.v);
+      // Basically after the following, this will hold: vector_A_means = [M0 * u0_prev - A * u*_prev] (but the multiplication with A had to be done with the full A)
+      // vector_A_means -= temp_1
+      vector_A_means.add_vector(temp_1.change_sign());
+    }
+    // vector_A_means += b0
     vector_A_means.add_vector(&vector_b_means);
-    // SOLVE
+    // Solve A0 * u0 = vector_A_means for u0
     solver_means.solve();
+    // Store the solution into the previous iteration:
+    // u0 -> u0_prev
     sln_means_k.set_vector(solver_means.get_sln_vector());
 
-    // 3. corrector
-    // M
-    matrix_M_der.multiply_with_vector(sln_der_k.v, vector_A_der.v, true);
-    // -B
-    add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
-    matrix_A_full.multiply_with_vector(sln_means_long.v, sln_means_long_temp.v, true);
-    cut_off_means(sln_means_long_temp.v, space, full_space, temp_2.v);
-    temp_2.change_sign();
-    vector_A_der.add_vector(&temp_2);
-    // (A - A~) - offdiag
-    matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
-    vector_A_der.add_vector(sln_der_offdiag.change_sign());
-    // b
-    vector_A_der.add_vector(&vector_b_der);
-    // SOLVE
-    solver_der.solve();
-
-    if (OMEGA >= 0.99)
-      sln_der_k.set_vector(solver_der.get_sln_vector());
-    else
+    if (polynomialDegree)
     {
-      for (int i = 0; i < ndofs; i++)
-        sln_der_k.set(i, (OMEGA * solver_der.get_sln_vector()[i]) + ((1. - OMEGA) * sln_der_k.get(i)));
+      // 2. corrector
+      // M* * u*_prev -> vector_A_der (utility variable)
+      matrix_M_der.multiply_with_vector(sln_der_k.v, vector_A_der.v, true);
+      // Prolongate u0_prev -> sln_means_k_long
+      add_ders(&sln_means_k, &sln_means_k_long, const_space, full_space);
+      // A * sln_means_k_long -> A_times_sln_means_k_long
+      matrix_A_full.multiply_with_vector(sln_means_k_long.v, A_times_sln_means_k_long.v, true);
+      // Restrict (take out means DOFs) A_times_sln_means_k_long -> temp_2.
+      cut_off_means(A_times_sln_means_k_long.v, space, full_space, temp_2.v);
+      // Basically after the following, this will hold: vector_A_der = [M* * u*_prev + A * u0_prev] (but the multiplication with A had to be done with the full A)
+      // vector_A_der -= temp_2
+      vector_A_der.add_vector(temp_2.change_sign());
+      // (A* - A*~) * u*_prev -> sln_der_offdiag (utility variable)
+      matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
+      // vector_A_der -= sln_der_offdiag
+      vector_A_der.add_vector(sln_der_offdiag.change_sign());
+      // vector_A_der += b*
+      vector_A_der.add_vector(&vector_b_der);
+      // Solve A*~ * u* = vector_A_der for u*
+      solver_der.solve();
+      // Store the solution into the previous iteration:
+      // u* -> u*_prev   (potentially use relaxation)
+      if (OMEGA >= 0.99)
+        sln_der_k.set_vector(solver_der.get_sln_vector());
+      else
+      {
+        for (int i = 0; i < ndofs; i++)
+          sln_der_k.set(i, (OMEGA * solver_der.get_sln_vector()[i]) + ((1. - OMEGA) * sln_der_k.get(i)));
+      }
+
+      // u0 + u* -> u
+      merge_slns(sln_means_k.v, const_space, sln_der_k.v, space, full_space, false, merged_sln);
     }
 
-    sln_means.set_vector(&sln_means_k);
-    sln_der.set_vector(&sln_der_k);
-    merge_slns(sln_means.v, const_space, sln_der.v, space, full_space, false, merged_sln);
 #ifdef SHOW_OUTPUT
     if (polynomialDegree)
       Solution<double>::vector_to_solution(merged_sln, full_space, solution);
     else
-      Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
+      Solution<double>::vector_to_solution(sln_means_k.v, const_space, solution);
 
     solution_view->set_title("Time: %f.");
     solution_view->show(solution);
 #endif
-      // Computation of the current residual
+    // Computation of the current residual
+    // !!!!! THIS DOES NOT DO ANYTHING, JUST SOME CALCULATION AND THE OUTPUT GOES NOWHERE
     {
-      add_means(&sln_der_k, &sln_der_long, space, full_space);
-      add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
-      sln_der_long.add_vector(&sln_means_long);
-      matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-      sln_der_long_temp.change_sign();
-      add_means(&vector_b_der, &sln_der_long, space, full_space);
-      add_ders(&vector_b_means, &sln_means_long, const_space, full_space);
-      sln_der_long_temp.add_vector(&sln_der_long);
-      sln_der_long_temp.add_vector(&sln_means_long);
-      double current_residual=calc_l2_norm_algebraic(full_space, sln_der_long_temp.v);
-      double ratio=current_residual;
+      // A * u -> A_times_u
+      matrix_A_full.multiply_with_vector(polynomialDegree ? merged_sln : sln_means_k.v, A_times_u.v, true);
+      // Change sign of A_times_u
+      A_times_u.change_sign();
+      
+      // A_times_u += b
+      if(polynomialDegree)
+        add_means(&vector_b_der, &sln_der_k_long, space, full_space);
+      if (polynomialDegree)
+        A_times_u.add_vector(&sln_der_k_long);
+      
+      add_ders(&vector_b_means, &sln_means_k_long, const_space, full_space);
+      A_times_u.add_vector(&sln_means_k_long);
+
+      // Algebraic norm of (b - A * u)
+      double current_residual = calc_l2_norm_algebraic(polynomialDegree ? full_space : const_space, A_times_u.v);
+      std::cout << current_residual << std::endl;
     }
+
     bool done=error_reduction_condition(calc_l2_error_algebraic(polynomialDegree ? full_space : const_space, 
-                                                                merged_sln, es_v, &logger_details, 
-                                                                iterations, init_ref_num, diffusivity));
+      polynomialDegree ? merged_sln : sln_means_k.v, es_v, &logger_details, iterations, init_ref_num, diffusivity));
     if (done)
       break;
   } while(true);
@@ -466,7 +505,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   SimpleVector<double> sln_der_k(ndofs);
   SimpleVector<double> sln_der_tmp(ndofs);
   SimpleVector<double> sln_der_long(full_ndofs);
-  SimpleVector<double> sln_der_long_temp(full_ndofs);
+  SimpleVector<double> A_times_sln_der_long(full_ndofs);
   SimpleVector<double> sln_der_offdiag(ndofs);
 
   OGProjection<double>::project_global(const_space, previous_mean_values, sln_means.v);
@@ -494,15 +533,15 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
     add_means(&sln_der, &sln_der_long, space, full_space);
     add_ders(&sln_means, &sln_means_long, const_space, full_space);
     sln_der_long.add_vector(&sln_means_long);
-    matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-    sln_der_long_temp.change_sign();
+    matrix_A_full.multiply_with_vector(sln_der_long.v, A_times_sln_der_long.v, true);
+    A_times_sln_der_long.change_sign();
     add_means(&vector_b_der, &sln_der_long, space, full_space);
     add_ders(&vector_b_means, &sln_means_long, const_space, full_space);
-    sln_der_long_temp.add_vector(&sln_means_long);
-    sln_der_long_temp.add_vector(&sln_der_long);
-    initial_residual=calc_l2_norm_algebraic(full_space, sln_der_long_temp.v);
-//       initial_residual=calc_l2_norm_algebraic(const_space, sln_der_long_temp.v);
-//       SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space);
+    A_times_sln_der_long.add_vector(&sln_means_long);
+    A_times_sln_der_long.add_vector(&sln_der_long);
+    initial_residual=calc_l2_norm_algebraic(full_space, A_times_sln_der_long.v);
+//       initial_residual=calc_l2_norm_algebraic(const_space, A_times_sln_der_long.v);
+//       SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(A_times_sln_der_long.v, const_space, full_space);
 //       initial_residual=calc_l2_norm_algebraic(const_space, temp_1->v);
 //       delete temp_1;
 
@@ -514,8 +553,8 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
       matrix_M_means.multiply_with_vector(sln_means.v, vector_A_means.v, true);
       // -B
       add_means(&sln_der_k, &sln_der_long, space, full_space);
-      matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-      cut_off_ders(sln_der_long_temp.v, const_space, full_space, temp_1.v);
+      matrix_A_full.multiply_with_vector(sln_der_long.v, A_times_sln_der_long.v, true);
+      cut_off_ders(A_times_sln_der_long.v, const_space, full_space, temp_1.v);
       temp_1.change_sign();
       vector_A_means.add_vector(&temp_1);
 
@@ -546,8 +585,8 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
       add_means(&sln_der_k, &sln_der_long, space, full_space);
       add_ders(&sln_means_k, &sln_means_long, const_space, full_space);
       sln_der_long.add_vector(&sln_means_long);
-      matrix_A_full.multiply_with_vector(sln_der_long.v, sln_der_long_temp.v, true);
-      sln_der_long_temp.change_sign();
+      matrix_A_full.multiply_with_vector(sln_der_long.v, A_times_sln_der_long.v, true);
+      A_times_sln_der_long.change_sign();
       sln_means_tmp.set_vector(&sln_means_k);
       sln_means_tmp.change_sign()->add_vector(&sln_means);
       matrix_M_means.multiply_with_vector(sln_means_tmp.v, vector_A_means.v, true);
@@ -558,12 +597,12 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
       vector_A_der.add_vector(&vector_b_der);
       add_ders(&vector_A_means, &sln_means_long, const_space, full_space);
       add_means(&vector_A_der, &sln_der_long, space, full_space);
-      sln_der_long_temp.add_vector(&sln_means_long);
-      sln_der_long_temp.add_vector(&sln_der_long);
-      current_residual=calc_l2_norm_algebraic(full_space, sln_der_long_temp.v);
-//         current_residual=calc_l2_norm_algebraic(const_space, sln_der_long_temp.v);
+      A_times_sln_der_long.add_vector(&sln_means_long);
+      A_times_sln_der_long.add_vector(&sln_der_long);
+      current_residual=calc_l2_norm_algebraic(full_space, A_times_sln_der_long.v);
+//         current_residual=calc_l2_norm_algebraic(const_space, A_times_sln_der_long.v);
 //         SimpleVector<double>* temp_1 = 
-//                          (SimpleVector<double>*)cut_off_ders(sln_der_long_temp.v, const_space, full_space);
+//                          (SimpleVector<double>*)cut_off_ders(A_times_sln_der_long.v, const_space, full_space);
 //         current_residual=calc_l2_norm_algebraic(const_space, temp_1->v);
 //         delete temp_1;
 
