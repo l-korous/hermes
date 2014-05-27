@@ -214,15 +214,15 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   weakform_explicit.set_current_time_step(time_step_length);
   weakform_explicit_offdiag.set_current_time_step(time_step_length);
   CSCMatrix<double> matrix_A_full;
-  CSCMatrix<double> matrix_A_means_just_A;
+  
   CSCMatrix<double> matrix_A_der;
-  SimpleVector<double> vector_b_der;
+  CSCMatrix<double> matrix_A_der_offdiag;
   CSCMatrix<double> matrix_M_der;
-  CSCMatrix<double> matrix_A_offdiag;
+  SimpleVector<double> vector_b_der;
 
   CSCMatrix<double> matrix_A_means;
-  SimpleVector<double> vector_b_means;
   CSCMatrix<double> matrix_M_means;
+  SimpleVector<double> vector_b_means;
 
   // Assembler.
   DiscreteProblem<double> dp;
@@ -231,8 +231,6 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   dp.set_space(full_space);
   dp.set_weak_formulation(&weakform_exact);
   dp.assemble(&matrix_A_full);
-  dp.set_space(const_space);
-  dp.assemble(&matrix_A_means_just_A);
 
   // Level 1.
   dp.set_space(space);
@@ -241,7 +239,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_der);
   dp.set_weak_formulation(&weakform_explicit_offdiag);
-  dp.assemble(&matrix_A_offdiag);
+  dp.assemble(&matrix_A_der_offdiag);
 
   // Level 0.
   dp.set_space(const_space);
@@ -345,7 +343,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
       // vector_A_der -= temp_2
       vector_A_der.add_vector(temp_2.change_sign());
       // (A* - A*~) * u*_prev -> sln_der_offdiag (utility variable)
-      matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
+      matrix_A_der_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
       // vector_A_der -= sln_der_offdiag
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
       // vector_A_der += b*
@@ -453,7 +451,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   CSCMatrix<double> matrix_A_der;
   SimpleVector<double> vector_b_der;
   CSCMatrix<double> matrix_M_der;
-  CSCMatrix<double> matrix_A_offdiag;
+  CSCMatrix<double> matrix_A_der_offdiag;
 
   CSCMatrix<double> matrix_A_means;
   SimpleVector<double> vector_b_means;
@@ -476,7 +474,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_der);
   dp.set_weak_formulation(&weakform_explicit_offdiag);
-  dp.assemble(&matrix_A_offdiag);
+  dp.assemble(&matrix_A_der_offdiag);
 
   // Level 0.
   dp.set_space(const_space);
@@ -574,7 +572,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
       temp_2.change_sign();
       vector_A_der.add_vector(&temp_2);
       // (A - A~) - offdiag
-      matrix_A_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
+      matrix_A_der_offdiag.multiply_with_vector(sln_der_k.v, sln_der_offdiag.v, true);
       vector_A_der.add_vector(sln_der_offdiag.change_sign());
       // b
       vector_A_der.add_vector(&vector_b_der);

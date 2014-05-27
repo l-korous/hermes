@@ -182,6 +182,8 @@ MultiscaleWeakForm::MultiscaleWeakForm(SolvedExample solvedExample, bool add_inl
 {
   initialization(solvedExample);
 
+  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
+
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, local));
