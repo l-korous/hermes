@@ -5,7 +5,7 @@
 
 int polynomialDegree = 2;
 int initialRefinementsCount = 4;
-const Algorithm algorithm = Multiscale;
+const Algorithm algorithm = Both;
 SolvedExample solvedExample = CircularConvection;
 // For the initial shape of the peak.
 const double MovingPeakDiffusivity = 1.e-3;

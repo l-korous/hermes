@@ -788,7 +788,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   cut_off_linear_part(prev_sln_1.v, space_0, space_1, prev_sln_0.v);
 
   double time = 0.;
-//   int time_step_count = (int)(is_timedep(solvedExample) ? std::ceil(end_time(solvedExample) / time_step_length) : 1);
+  if (!is_timedep(solvedExample))
+    time_step_count = 1;
   int iteration_count = (int)(is_timedep(solvedExample) ? V_cycles_per_time_step : 10000);
   for (int time_step = 1; time_step <= time_step_count; time_step++)
   {
@@ -1023,8 +1024,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
 //         SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(vector_A_2.v, space_0, space_2);
 //         current_residual=calc_l2_norm_algebraic(space_0, temp_1->v);
 //         delete temp_1;
+        if (current_residual / initial_residual < tolerance)
+          break;
       }
-    } while (current_residual/initial_residual>tolerance);
+    } while (true);
 
     if (is_timedep(solvedExample))
       time += time_step_length;
