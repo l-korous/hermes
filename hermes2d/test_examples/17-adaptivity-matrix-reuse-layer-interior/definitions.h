@@ -39,3 +39,19 @@ public:
   double slope;
 };
 
+class CustomNormFormVol : public NormFormVol<double>
+{
+public:
+  CustomNormFormVol(int i, int j) : NormFormVol<double>(i, j)
+  {
+    this->set_area(HERMES_ANY);
+  }
+
+  virtual double value(int n, double *wt, Func<double> *u, Func<double> *v, GeomVol<double> *e) const
+  {
+    double result = double(0);
+    for (int i = 0; i < n; i++)
+      result += wt[i] * u->val[i] * v->val[i];
+    return result * e->get_area(n, wt);
+  }
+};

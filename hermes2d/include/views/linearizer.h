@@ -55,12 +55,32 @@ namespace Hermes
 
         /// Save a MeshFunction (Solution, Filter) in VTK format.
         void save_solution_vtk(MeshFunctionSharedPtr<double> sln, const char* filename, const char* quantity_name, bool mode_3D = true, int item = H2D_FN_VAL_0);
+        /// Do not allow to save complex solutions, but have the method in the API for easy development.
+        void save_solution_vtk(MeshFunctionSharedPtr<std::complex<double> > sln, const char* filename, const char* quantity_name, bool mode_3D = true, int item = H2D_FN_VAL_0)
+        {
+          throw Exceptions::Exception("Visualization of complex 2D solution is not possible, please use a filter that converts the solution into a real function, then display that one.");
+        }
         /// Save multiple MeshFunctions (Solutions, Filters) in VTK format.
         void save_solution_vtk(std::vector<MeshFunctionSharedPtr<double> > slns, std::vector<int> items, const char* filename, const char* quantity_name, bool mode_3D = true);
+        /// Do not allow to save complex solutions, but have the method in the API for easy development.
+        void save_solution_vtk(std::vector<MeshFunctionSharedPtr<std::complex<double> > > slns, std::vector<int> items, const char* filename, const char* quantity_name, bool mode_3D = true)
+        {
+          throw Exceptions::Exception("Visualization of complex 2D solution is not possible, please use a filter that converts the solution into a real function, then display that one.");
+        }
         /// Save a MeshFunction (Solution, Filter) in Tecplot format.
         void save_solution_tecplot(MeshFunctionSharedPtr<double> sln, const char* filename, const char* quantity_name, int item = H2D_FN_VAL_0);
+        /// Do not allow to save complex solutions, but have the method in the API for easy development.
+        void save_solution_tecplot(MeshFunctionSharedPtr<std::complex<double> > sln, const char* filename, const char* quantity_name, int item = H2D_FN_VAL_0)
+        {
+          throw Exceptions::Exception("Visualization of complex 2D solution is not possible, please use a filter that converts the solution into a real function, then display that one.");
+        }
         /// Save multiple MeshFunctions (Solutions, Filters) in Tecplot format.
         void save_solution_tecplot(std::vector<MeshFunctionSharedPtr<double> > slns, std::vector<int> items, const char* filename, std::vector<std::string> quantity_names);
+        /// Do not allow to save complex solutions, but have the method in the API for easy development.
+        void save_solution_tecplot(std::vector<MeshFunctionSharedPtr<std::complex<double> > > slns, std::vector<int> items, const char* filename, std::vector<std::string> quantity_names)
+        {
+          throw Exceptions::Exception("Visualization of complex 2D solution is not possible, please use a filter that converts the solution into a real function, then display that one.");
+        }
 
         /// Sets the criterion to use for the linearization process.
         /// This criterion is used in ThreadLinearizerMultidimensional class instances (see threadLinearizerMultidimensional array).

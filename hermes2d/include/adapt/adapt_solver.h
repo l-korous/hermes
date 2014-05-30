@@ -97,6 +97,9 @@ namespace Hermes
       /// Switch visualization on / off.
       void switch_visualization(bool on_off);
 
+      /// Switch VTK output on / off.
+      void switch_vtk(bool on_off);
+
       /// Add exact solutions for exact solver calculation.
       void set_exact_solutions(std::vector<MeshFunctionSharedPtr<Scalar> > exact_slns);
 
@@ -123,8 +126,12 @@ namespace Hermes
       /// Views settings.
       static unsigned short view_size;
       static bool scalar_views_switch;
+      static bool scalar_vtk_switch;
       static bool order_views_switch;
+      static bool order_vtk_switch;
       static bool base_views_switch;
+      static bool adapt_views_switch;
+      static bool adapt_vtk_switch;
       static bool wait_on_show;
 
     private:
@@ -147,6 +154,9 @@ namespace Hermes
 
       /// (Optional) visualization.
       void visualize(std::vector<SpaceSharedPtr<Scalar> >& ref_spaces);
+
+      /// (Optional) VTK export.
+      void vtk(std::vector<SpaceSharedPtr<Scalar> >& ref_spaces);
 
       /// The stopping_criterion_global for the loop to stop - the quantity measured is the total error as measured by the provided instance of error calculator.
       AdaptSolverCriterion* stopping_criterion_global;
@@ -191,6 +201,7 @@ namespace Hermes
 
       /// Views - used only if visualization is ON.
       std::vector<Views::ScalarView*> scalar_views;
+      std::vector<Views::ScalarView*> adapt_views;
       std::vector<Views::OrderView*> order_views;
       std::vector<Views::BaseView<Scalar>*> base_views;
 
@@ -214,7 +225,7 @@ namespace Hermes
       Vector<Scalar>* prev_rhs, *prev_dirichlet_lift_rhs;
 
       /// Use Hermes views to display stuff.
-      bool visualization;
+      bool visualization, vtk_output;
 
       /// For info only.
       unsigned int total_elements_prev_spaces;

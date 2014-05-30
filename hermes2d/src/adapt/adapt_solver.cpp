@@ -21,11 +21,14 @@
 #include "views/scalar_view.h"
 #include "views/base_view.h"
 #include "views/order_view.h"
+#include "views/linearizer.h"
+#include "views/orderizer.h"
 #include "views/mesh_view.h"
 #include "mesh/mesh_reader_h2d_xml.h"
 
 
-//#define DEBUG_VIEWS
+#define DEBUG_VIEWS
+//#define DEBUG_BASES
 //#define DEBUG_ALGEBRA
 
 namespace Hermes
@@ -59,12 +62,20 @@ namespace Hermes
     template<typename Scalar, typename SolverType>
     bool AdaptSolver<Scalar, SolverType>::scalar_views_switch = true;
     template<typename Scalar, typename SolverType>
+    bool AdaptSolver<Scalar, SolverType>::scalar_vtk_switch = false;
+    template<typename Scalar, typename SolverType>
     bool AdaptSolver<Scalar, SolverType>::order_views_switch = true;
+    template<typename Scalar, typename SolverType>
+    bool AdaptSolver<Scalar, SolverType>::order_vtk_switch = false;
     template<typename Scalar, typename SolverType>
     bool AdaptSolver<Scalar, SolverType>::base_views_switch = true;
     template<typename Scalar, typename SolverType>
+    bool AdaptSolver<Scalar, SolverType>::adapt_views_switch = false;
+    template<typename Scalar, typename SolverType>
+    bool AdaptSolver<Scalar, SolverType>::adapt_vtk_switch = false;
+    template<typename Scalar, typename SolverType>
     bool AdaptSolver<Scalar, SolverType>::wait_on_show = false;
-    
+
 
     template<typename Scalar, typename SolverType>
     AdaptSolver<Scalar, SolverType>::AdaptSolver(std::vector<SpaceSharedPtr<Scalar> > initial_spaces, WeakFormSharedPtr<Scalar> wf, ErrorCalculator<Scalar>* error_calculator, AdaptivityStoppingCriterion<Scalar>* stopping_criterion_single_step, std::vector<RefinementSelectors::Selector<Scalar>*> selectors, AdaptSolverCriterion* stopping_criterion_global)
@@ -90,6 +101,7 @@ namespace Hermes
       Helpers::check_length(this->selectors, this->number_of_equations);
       this->solve_method_running = false;
       this->visualization = false;
+      this->vtk_output = false;
       this->prev_mat = nullptr;
       this->prev_rhs = nullptr;
       this->prev_dirichlet_lift_rhs = nullptr;
@@ -125,6 +137,12 @@ namespace Hermes
       this->visualization = on_off;
     }
 
+    template<typename Scalar, typename SolverType>
+    void AdaptSolver<Scalar, SolverType>::switch_vtk(bool on_off)
+    {
+      this->vtk_output = on_off;
+    }
+
     template<typename Scalar>
     class StateReassemblyHelper
     {
@@ -139,7 +157,7 @@ namespace Hermes
       static Vector<Scalar>* current_prev_rhs;
       static Vector<Scalar>* current_prev_dirichlet_lift_rhs;
       static Hermes::Mixins::Loggable* loggable;
-      
+
       static bool use_Dirichlet;
       static bool** reusable_DOFs;
       static bool** reusable_Dirichlet;
@@ -193,7 +211,7 @@ namespace Hermes
       if (a.real() < b.real() && a.imag() < b.imag())
         return true;
       else
-      return false;
+        return false;
     }
 
     template<>
@@ -201,6 +219,12 @@ namespace Hermes
     {
       return a < b;
     }
+
+
+
+#ifdef DEBUG_VIEWS
+    std::vector<Views::ScalarView*> reassembled_views;
+#endif
 
     template<typename Scalar>
     void get_states_to_reassemble(Traverse::State**& states, unsigned int& num_states, SparseMatrix<Scalar>* mat, Vector<Scalar>* rhs, Vector<Scalar>* dirichlet_lift_rhs, Scalar*& coeff_vec)
@@ -252,7 +276,7 @@ namespace Hermes
         dummy_fns.push_back(new ZeroSolution<Scalar>(StateReassemblyHelper<Scalar>::current_ref_spaces->at(i)->get_mesh()));
       // - (for reporting) count of DOFs needed to be reassembled
       int reusable_DOFs_count = 0;
-      
+
       // Start.
       StateReassemblyHelper<Scalar>::loggable->info("\t   Handling Reusing matrix entries on the new Ref. Space:");
       cpu_time.tick();
@@ -384,6 +408,8 @@ namespace Hermes
         }
       }
 
+      free_with_check(states_local, true);
+
       cpu_time.tick();
       StateReassemblyHelper<Scalar>::loggable->info("\t      No. of DOFs to reassemble: %i / %i total - %2.0f%%.", ref_system_size - reusable_DOFs_count, ref_system_size, ((float)(ref_system_size - reusable_DOFs_count) / (float)ref_system_size) * 100.);
       StateReassemblyHelper<Scalar>::loggable->info("\t      Search for elements to reassemble: %4.3f s", cpu_time.last());
@@ -449,7 +475,7 @@ namespace Hermes
               used_entries++;
             }
           }
-          if(rhs)
+          if (rhs)
             rhs->add(DOF_to_DOF_map[i], StateReassemblyHelper<Scalar>::current_prev_rhs->get(i));
           if (coeff_vec)
             new_coeff_vec[DOF_to_DOF_map[i]] = coeff_vec[i];
@@ -482,7 +508,7 @@ namespace Hermes
         rhs->export_to_file("RhsAfterReuse", "b", EXPORT_FORMAT_PLAIN_ASCII, "%16.16f");
       if (dirichlet_lift_rhs && StateReassemblyHelper<Scalar>::use_Dirichlet)
         dirichlet_lift_rhs->export_to_file("DirLiftAfterReuse", "bd", EXPORT_FORMAT_PLAIN_ASCII, "%16.16f");
-      
+
       if (coeff_vec)
       {
         FILE* coeff_vec_prev_file = fopen("CoeffVecPrev", "w");
@@ -508,31 +534,44 @@ namespace Hermes
 
 #ifdef DEBUG_VIEWS
 
-      std::vector<Views::ScalarView*> reassembled_views;
+#ifdef DEBUG_BASES
       std::vector<Views::BaseView<Scalar>*> base_views_prev;
       std::vector<Views::BaseView<Scalar>*> base_views_curr;
+#endif
 
       for (unsigned char space_i = 0; space_i < StateReassemblyHelper<Scalar>::current_number_of_equations; space_i++)
       {
-        reassembled_views.push_back(new Views::ScalarView("", new Views::WinGeom(630 + space_i * 310, 630, 300, 300)));
-        reassembled_views.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionFixed(1));
+        if (reassembled_views.empty())
+        {
+          reassembled_views.push_back(new Views::ScalarView("", new Views::WinGeom(630 + space_i * 310, 630, 300, 300)));
+          reassembled_views.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionFixed(1));
+        }
         MeshFunctionSharedPtr<double> reassembled_states_function(new ExactSolutionConstantArray<double, bool>(ref_spaces[space_i]->get_mesh(), reassembled[space_i]));
+        Views::Linearizer lin(FileExport);
+        char filename[40];
+        sprintf(filename, "reassembled-%i.vtk", StateReassemblyHelper<Scalar>::current_iteration);
+        lin.set_criterion(Views::LinearizerCriterionFixed(0));
+        //lin.save_solution_vtk(reassembled_states_function, filename, "reassembled", false);
         reassembled_views.back()->show(reassembled_states_function);
+
+#ifdef DEBUG_BASES
         base_views_prev.push_back(new Views::BaseView<Scalar>("", new Views::WinGeom(630, space_i * 310, 300, 300)));
         base_views_curr.push_back(new Views::BaseView<Scalar>("", new Views::WinGeom(950, space_i * 310, 300, 300)));
         base_views_prev.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionFixed(2));
         base_views_prev.back()->show(StateReassemblyHelper<Scalar>::current_prev_ref_spaces->at(space_i));
         base_views_curr.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionFixed(2));
         base_views_curr.back()->show(StateReassemblyHelper<Scalar>::current_ref_spaces->at(space_i));
+        Views::View::wait_for_keypress();
+#endif
       }
 
-      Views::View::wait_for_keypress();
       for (unsigned char space_i = 0; space_i < StateReassemblyHelper<Scalar>::current_number_of_equations; space_i++)
       {
         ::free(reassembled[space_i]);
-        delete reassembled_views[space_i];
+#ifdef DEBUG_BASES
         delete base_views_prev[space_i];
         delete base_views_curr[space_i];
+#endif
       }
       delete[] reassembled;
 #endif
@@ -559,22 +598,30 @@ namespace Hermes
         slns.push_back(MeshFunctionSharedPtr<Scalar>(new Solution<Scalar>));
         if (this->visualization)
         {
+          int column = 0;
           if (scalar_views_switch)
           {
-            this->scalar_views.push_back(new Views::ScalarView("", new Views::WinGeom(i * (view_size + 20), 0, view_size, view_size)));
+            this->scalar_views.push_back(new Views::ScalarView("", new Views::WinGeom(i * (view_size + 20), column++ * (view_size + 20), view_size, view_size)));
             this->scalar_views.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionAdaptive(Views::HERMES_EPS_LOW * 10.));
             this->scalar_views.back()->set_title("Reference solution #%i", i);
           }
 
+          if (adapt_views_switch)
+          {
+            this->adapt_views.push_back(new Views::ScalarView("", new Views::WinGeom(i * (view_size + 20), column++ * (view_size + 20), view_size, view_size)));
+            this->adapt_views.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionAdaptive(Views::HERMES_EPS_LOW * 10.));
+            this->adapt_views.back()->set_title("Refined elements #%i", i);
+          }
+
           if (order_views_switch)
           {
-            this->order_views.push_back(new Views::OrderView("", new Views::WinGeom(i * (view_size + 20), (view_size + 20), view_size, view_size)));
+            this->order_views.push_back(new Views::OrderView("", new Views::WinGeom(i * (view_size + 20), column++ * (view_size + 20), view_size, view_size)));
             this->order_views.back()->set_title("Reference space #%i - orders", i);
           }
 
           if (base_views_switch)
           {
-            this->base_views.push_back(new Views::BaseView<Scalar>("", new Views::WinGeom(i * (view_size + 20), 2 * (view_size + 20), view_size, view_size)));
+            this->base_views.push_back(new Views::BaseView<Scalar>("", new Views::WinGeom(i * (view_size + 20), column++ * (view_size + 20), view_size, view_size)));
             this->base_views.back()->get_linearizer()->set_criterion(Views::LinearizerCriterionAdaptive(Views::HERMES_EPS_LOW * 10.));
           }
         }
@@ -620,9 +667,12 @@ namespace Hermes
         for (unsigned short i = 0; i < this->scalar_views.size(); i++)
           delete this->scalar_views[i];
 
+        for (unsigned short i = 0; i < this->adapt_views.size(); i++)
+          delete this->adapt_views[i];
+
         for (unsigned short i = 0; i < this->order_views.size(); i++)
           delete this->order_views[i];
-        
+
         for (unsigned short i = 0; i < this->base_views.size(); i++)
           delete this->base_views[i];
       }
@@ -725,6 +775,8 @@ namespace Hermes
 
         if (this->visualization)
           this->visualize(ref_spaces);
+        if (this->vtk_output)
+          this->vtk(ref_spaces);
 
         // Project the fine mesh solution onto the coarse mesh.
         this->info("\tProjecting reference solution on coarse mesh.");
@@ -763,6 +815,26 @@ namespace Hermes
             this->adaptivity_internal->adapt(hOnlySelectors);
           else
             this->adaptivity_internal->adapt(pOnlySelectors);
+
+          if (this->visualization)
+          if (this->adapt_views_switch)
+          {
+            for (unsigned short i = 0; i < this->number_of_equations; i++)
+              this->adapt_views[i]->show(this->adaptivity_internal->get_refinementInfoMeshFunction(i));
+          }
+
+          if (this->vtk_output)
+          if (this->adapt_vtk_switch)
+          {
+            for (unsigned short i = 0; i < this->number_of_equations; i++)
+            {
+              Views::Linearizer lin(FileExport);
+              char filename[40];
+              sprintf(filename, "refinedElements-%i.vtk", this->adaptivity_step);
+              lin.set_criterion(Views::LinearizerCriterionFixed(0));
+              lin.save_solution_vtk(this->adaptivity_internal->get_refinementInfoMeshFunction(i), filename, "refined", false);
+            }
+          }
 
           Hermes::Hermes2D::MeshReaderH2DXML reader;
           std::vector<MeshSharedPtr> meshes;
@@ -880,13 +952,43 @@ namespace Hermes
           this->scalar_views[i]->show(this->ref_slns[i]);
 
         for (unsigned short i = 0; i < this->order_views.size(); i++)
-          this->order_views[i]->show(ref_spaces[i]);
+          this->order_views[i]->show(spaces[i]);
 
         for (unsigned short i = 0; i < this->base_views.size(); i++)
           this->base_views[i]->show(ref_spaces[i]);
       }
 
       //Views::View::wait_for_keypress();
+    }
+
+    template<typename Scalar, typename SolverType>
+    void AdaptSolver<Scalar, SolverType>::vtk(std::vector<SpaceSharedPtr<Scalar> >& ref_spaces)
+    {
+      if (this->scalar_vtk_switch)
+      for (unsigned short i = 0; i < this->number_of_equations; i++)
+      {
+        Views::Linearizer lin(FileExport);
+        char filename[40];
+        sprintf(filename, "solution-%i.vtk", this->adaptivity_step);
+        lin.set_criterion(Views::LinearizerCriterionFixed(2));
+        lin.save_solution_vtk(this->ref_slns[i], filename, "sln", false);
+      }
+
+      if (this->order_vtk_switch)
+      for (unsigned short i = 0; i < this->number_of_equations; i++)
+      {
+        Views::Orderizer lin;
+        char filename[40];
+        sprintf(filename, "space-%i.vtk", this->adaptivity_step);
+        lin.save_orders_vtk(this->spaces[i], filename);
+        sprintf(filename, "mesh-%i.vtk", this->adaptivity_step);
+        lin.save_mesh_vtk(this->spaces[i], filename);
+
+        sprintf(filename, "ref_space-%i.vtk", this->adaptivity_step);
+        lin.save_orders_vtk(this->ref_spaces[i], filename);
+        sprintf(filename, "ref_mesh-%i.vtk", this->adaptivity_step);
+        lin.save_mesh_vtk(this->ref_spaces[i], filename);
+      }
     }
 
     template<typename Scalar, typename SolverType>
