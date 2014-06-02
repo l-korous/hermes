@@ -4,12 +4,12 @@
 #include "algorithms.h"
 
 int polynomialDegree = 2;
-int initialRefinementsCount = 4;
-const Algorithm algorithm = Multiscale;
+int initialRefinementsCount = 3;
+const Algorithm algorithm = Both;
 SolvedExample solvedExample = MovingPeak;
 // For the initial shape of the peak.
 const double MovingPeakDiffusivity = 1e-3;
-double diffusivity = 1e-3;
+double diffusivity = 0e-3;
 double s = -1.;
 double sigma_star = 10.;
 double CFL = 1e-1;
@@ -185,7 +185,6 @@ int main(int argc, char* argv[])
     logger_global.info(ss_global.str().c_str());
   }
 
-  return 0;
   // HSS
   if (algorithm == Multiscale || algorithm == Both)
   {
@@ -225,7 +224,7 @@ int main(int argc, char* argv[])
 
 
     // Fill the logs.
-    logger_HSS.info("%f|%s", cpu_time.last(), outString.c_str());
+    logger_HSS.info("CPUTime=%f|%s", cpu_time.last(), outString.c_str());
     std::stringstream ss_global;
     ss_global << "Grid=" << initialRefinementsCount << "|Diff=" << diffusivity << "|CFL=" << CFL << "|HSS|Time=" << cpu_time.last() << "|" << outString;
     logger_global.info(ss_global.str().c_str());
@@ -264,10 +263,10 @@ int main(int argc, char* argv[])
 
 
       // Fill the logs.
-      logger_pMultigrid.info("%f|%s", cpu_time.last(), outString.c_str());
+      logger_pMultigrid.info("CPUTime=%f|%s", cpu_time.last(), outString.c_str());
       std::stringstream ss_global;
       ss_global << "Grid=" << initialRefinementsCount << "|Diff=" << diffusivity << "|CFL=" << CFL
-        << "|MG||Time=" << cpu_time.last() << "|" << outString;
+        << "|MG|" << smoothing_steps_per_V_cycle [si] << "|Time=" << cpu_time.last() << "|" << outString;
       logger_global.info(ss_global.str().c_str());
     }
   }
