@@ -5,10 +5,10 @@
 
 int polynomialDegree = 2;
 int initialRefinementsCount = 4;
-const Algorithm algorithm = pMultigrid;
+const Algorithm algorithm = Multiscale;
 SolvedExample solvedExample = MovingPeak;
 // For the initial shape of the peak.
-const double MovingPeakDiffusivity = 1.e-2;
+const double MovingPeakDiffusivity = 1e-3;
 double diffusivity = 1e-3;
 double s = -1.;
 double sigma_star = 10.;
@@ -154,12 +154,12 @@ int main(int argc, char* argv[])
   }
 
   // Solutions.
-  MeshFunctionSharedPtr<double> solution(new Solution<double>);
   MeshFunctionSharedPtr<double> previous_solution(previous_initial_condition);
   MeshFunctionSharedPtr<double> previous_mean_values(initial_condition);
   MeshFunctionSharedPtr<double> previous_derivatives(initial_condition_der);
   MeshFunctionSharedPtr<double> exact_solution(exact_sln);
   MeshFunctionSharedPtr<double> initial_sln(initial_solution);
+
 
   // Visualization classes.
   ScalarView solution_view("Solution", new WinGeom(0, 0, 600, 350));
@@ -171,7 +171,6 @@ int main(int argc, char* argv[])
   logger_global.set_timestamps(false);
 
   // Exact solver solution
-  /*
   {
     SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
     cpu_time.tick();
@@ -179,16 +178,14 @@ int main(int argc, char* argv[])
       solve_exact(solvedExample, space, diffusivity, s, sigma, exact_solution, initial_sln,
       time_step_length, polynomialDegree, initialRefinementsCount);
     else
-      exact_solver_timedep(mesh, solvedExample, polynomialDegree, initialRefinementsCount,
-      diffusivity, s, sigma, time_step_length, time_step_count, initial_solution, exact_solution,
-      &exact_view, CFL);
+      exact_solver_timedep(mesh, solvedExample, polynomialDegree, initialRefinementsCount, diffusivity, s, sigma, time_step_length, time_step_count, initial_sln, exact_solution, &exact_view, CFL);
     cpu_time.tick();
     std::stringstream ss_global;
     ss_global << "Grid=" << initialRefinementsCount << "|Diff=" << diffusivity << "|CFL=" << CFL << "|Exact|Time=" << cpu_time.last();
     logger_global.info(ss_global.str().c_str());
   }
-  */
 
+  return 0;
   // HSS
   if (algorithm == Multiscale || algorithm == Both)
   {
@@ -217,13 +214,11 @@ int main(int argc, char* argv[])
     std::string outString = is_timedep(solvedExample) ?
       multiscale_decomposition_timedep(mesh, solvedExample, polynomialDegree, initialRefinementsCount,
       previous_mean_values, previous_derivatives, diffusivity, s, sigma,
-      time_step_length, time_step_count, initial_sln, solution, exact_solution,
-      &solution_view, &exact_view, logger_HSS, logger_details, CFL)
+      time_step_length, time_step_count, exact_solution, &solution_view, &exact_view, logger_HSS, logger_details, CFL)
       :
       multiscale_decomposition(mesh, solvedExample, polynomialDegree, initialRefinementsCount,
       previous_mean_values, previous_derivatives, diffusivity, s, sigma,
-      time_step_length, time_step_count, initial_sln, solution, exact_solution,
-      &solution_view, &exact_view, logger_HSS, logger_details, CFL);
+      time_step_length, time_step_count, exact_solution, &solution_view, &exact_view, logger_HSS, logger_details, CFL);
 
     // Stop measuring time.
     cpu_time.tick();
@@ -261,8 +256,7 @@ int main(int argc, char* argv[])
       // Calculate & return what to put in the log.
       std::string outString =
         p_multigrid(mesh, solvedExample, polynomialDegree, initialRefinementsCount,
-        previous_solution_local, diffusivity, time_step_length, time_step_count, solution,
-        exact_solution, &solution_view, &exact_view, s, sigma, logger_pMultigrid,
+        previous_solution_local, diffusivity, time_step_length, time_step_count, exact_solution, &solution_view, &exact_view, s, sigma, logger_pMultigrid,
         smoothing_steps_per_V_cycle[si], CFL);
 
       // Stop measuring time.

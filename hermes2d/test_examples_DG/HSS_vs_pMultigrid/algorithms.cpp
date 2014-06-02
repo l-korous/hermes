@@ -143,7 +143,6 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
   // Reporting.
 
   double time = 0.;
-//   int iteration_count = std::ceil(end_time(solvedExample) / time_step_length);
   for (int iteration = 1; iteration <= time_step_count; ++iteration)
   {
     static_log.info("Time step: %i, time: %f.", iteration, time+time_step_length);
@@ -156,6 +155,7 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
     exact_view->show(previous_solution);
 #endif
   }
+  
   Solution<double>::vector_to_solution(solver.get_sln_vector(), full_space, es);
 
   std::stringstream ss_bmpe;
@@ -182,8 +182,7 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
 std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, int init_ref_num, 
                                      MeshFunctionSharedPtr<double> previous_mean_values, 
                                      MeshFunctionSharedPtr<double> previous_derivatives, 
-                                     double diffusivity, double s, double sigma, double time_step_length, int time_step_count,
-                                     MeshFunctionSharedPtr<double> previous_solution, MeshFunctionSharedPtr<double> solution, 
+                                     double diffusivity, double s, double sigma, double time_step_length, int time_step_count, 
                                      MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, 
                                      ScalarView* exact_view, Hermes::Mixins::Loggable& logger, 
                                      Hermes::Mixins::Loggable& logger_details, double cfl)
@@ -196,6 +195,9 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
   int ndofs = space->get_num_dofs();
   int const_ndofs = const_space->get_num_dofs();
   int full_ndofs = full_space->get_num_dofs();
+
+  // Utility solution.
+  MeshFunctionSharedPtr<double> solution(new Solution<double>());
 
   OGProjection<double>::project_global(const_space, previous_mean_values, previous_mean_values);
   OGProjection<double>::project_global(space, previous_derivatives, previous_derivatives);
@@ -412,8 +414,6 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
                                              int init_ref_num, MeshFunctionSharedPtr<double> previous_mean_values, 
                                              MeshFunctionSharedPtr<double> previous_derivatives, double diffusivity, 
                                              double s, double sigma, double time_step_length, int time_step_count,
-                                             MeshFunctionSharedPtr<double> previous_solution, 
-                                             MeshFunctionSharedPtr<double> solution, 
                                              MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, 
                                              ScalarView* exact_view, Hermes::Mixins::Loggable& logger, 
                                              Hermes::Mixins::Loggable& logger_details, double cfl)
@@ -429,6 +429,9 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   int ndofs = space->get_num_dofs();
   int const_ndofs = const_space->get_num_dofs();
   int full_ndofs = full_space->get_num_dofs();
+
+  // Utility solution.
+  MeshFunctionSharedPtr<double> solution(new Solution<double>());
 
   OGProjection<double>::project_global(const_space, previous_mean_values, previous_mean_values);
   OGProjection<double>::project_global(space, previous_derivatives, previous_derivatives);
@@ -652,8 +655,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
 
 std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int polynomialDegree, int init_ref_num,
                         MeshFunctionSharedPtr<double> previous_sln, double diffusivity, double time_step_length,
-                        int time_step_count, MeshFunctionSharedPtr<double> solution, 
-                        MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, ScalarView* exact_view,
+                        int time_step_count, MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, ScalarView* exact_view,
                         double s, double sigma, Hermes::Mixins::Loggable& logger, int smoothing_steps_per_V_cycle, 
                         double cfl)
 {
@@ -664,6 +666,9 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   int ndofs_1 = space_1->get_num_dofs();
   SpaceSharedPtr<double> space_0(new L2Space<double>(mesh, 0, new L2ShapesetTaylor));
   int ndofs_0 = space_0->get_num_dofs();
+
+  // Utility solution.
+  MeshFunctionSharedPtr<double> solution(new Solution<double>());
 
   // Matrices A, vectors b.
   ExactWeakForm weakform_exact(solvedExample, add_inlet(solvedExample), "Inlet", diffusivity, s, sigma, exact_solution);
@@ -706,6 +711,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   dp.assemble(&matrix_MA_tilde_2);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_2);
+  if (is_timedep(solvedExample))
+    matrix_MA_tilde_2.add_sparse_matrix(&matrix_M_2);
 
   // Level 1.
   dp.set_space(space_1);
@@ -715,6 +722,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   dp.assemble(&matrix_MA_tilde_1);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_1);
+  if (is_timedep(solvedExample))
+    matrix_MA_tilde_1.add_sparse_matrix(&matrix_M_1);
 
   // Level 0.
   dp.set_space(space_0);
@@ -724,6 +733,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   dp.assemble(&matrix_MA_0);
   dp.set_weak_formulation(&weakform_mass);
   dp.assemble(&matrix_M_0);
+  if (is_timedep(solvedExample))
+    matrix_MA_0.add_sparse_matrix(&matrix_M_0);
 
   UMFPackLinearMatrixSolver<double> solver_2(&matrix_MA_tilde_2, &vector_A_2);
   solver_2.setup_factorization();

@@ -71,8 +71,6 @@ SmoothingWeakForm::SmoothingWeakForm(SolvedExample solvedExample, bool local, in
 {
   initialization(solvedExample);
 
-  // Matrix
-  
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
   add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, local));
