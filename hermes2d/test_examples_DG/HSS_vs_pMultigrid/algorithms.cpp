@@ -173,6 +173,7 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
 #ifdef SHOW_OUTPUT
   exact_view->show(es);
   exact_view->save_screenshot(ss_bmpe.str().c_str(), true);
+  exact_view->close();
 #endif
   exact_view->get_linearizer()->save_solution_tecplot(es, ss_vtke.str().c_str(), "exactSolution", 1, 2.0);
 }
@@ -185,7 +186,7 @@ std::string multiscale_decomposition(MeshSharedPtr mesh, SolvedExample solvedExa
                                      MeshFunctionSharedPtr<double> previous_solution, MeshFunctionSharedPtr<double> solution, 
                                      MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, 
                                      ScalarView* exact_view, Hermes::Mixins::Loggable& logger, 
-                                     Hermes::Mixins::Loggable& logger_details, double cfl, int steps_per_time_step)
+                                     Hermes::Mixins::Loggable& logger_details, double cfl)
 {
   // Standard L2 space.
   SpaceSharedPtr<double> space(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor(false)));
@@ -415,7 +416,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
                                              MeshFunctionSharedPtr<double> solution, 
                                              MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, 
                                              ScalarView* exact_view, Hermes::Mixins::Loggable& logger, 
-                                             Hermes::Mixins::Loggable& logger_details, double cfl, int steps_per_time_step)
+                                             Hermes::Mixins::Loggable& logger_details, double cfl)
 {
   if (!is_timedep(solvedExample))
     return "";
@@ -515,12 +516,11 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   int iterations = 0;
   double time = 0.;
 
-  double* merged_sln;
+  double* merged_sln = new double[full_ndofs];
 
   SimpleVector<double> temp_1(const_ndofs);
   SimpleVector<double> temp_2(ndofs);
   
-  int iteration_count = steps_per_time_step;
   for (int time_step = 1; time_step <= time_step_count; time_step++)
   {
     double initial_residual, current_residual;
@@ -538,10 +538,6 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
     A_times_sln_der_long.add_vector(&sln_means_long);
     A_times_sln_der_long.add_vector(&sln_der_long);
     initial_residual=calc_l2_norm_algebraic(full_space, A_times_sln_der_long.v);
-//       initial_residual=calc_l2_norm_algebraic(const_space, A_times_sln_der_long.v);
-//       SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(A_times_sln_der_long.v, const_space, full_space);
-//       initial_residual=calc_l2_norm_algebraic(const_space, temp_1->v);
-//       delete temp_1;
 
     do
     {
@@ -598,11 +594,6 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
       A_times_sln_der_long.add_vector(&sln_means_long);
       A_times_sln_der_long.add_vector(&sln_der_long);
       current_residual=calc_l2_norm_algebraic(full_space, A_times_sln_der_long.v);
-//         current_residual=calc_l2_norm_algebraic(const_space, A_times_sln_der_long.v);
-//         SimpleVector<double>* temp_1 = 
-//                          (SimpleVector<double>*)cut_off_ders(A_times_sln_der_long.v, const_space, full_space);
-//         current_residual=calc_l2_norm_algebraic(const_space, temp_1->v);
-//         delete temp_1;
 
       if (OMEGA >= 0.99)
         sln_der_k.set_vector(solver_der.get_sln_vector());
@@ -624,7 +615,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
     else
       Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
 
-    solution_view->set_title("Time: %f.");
+    solution_view->set_title("Time: %f.", time + time_step_length);
     solution_view->show(solution);
 #endif
 
@@ -635,20 +626,11 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
   outStream << "Iter=" << iterations;
   DefaultErrorCalculator<double, HERMES_L2_NORM> errorCalculator(RelativeErrorToGlobalNorm, 1);
 
-  if (polynomialDegree)
-  {
-    merge_slns(sln_means.v, const_space, sln_der.v, space, full_space, false, merged_sln);
-    Solution<double>::vector_to_solution(merged_sln, full_space, solution);
-  }
-  else
-    Solution<double>::vector_to_solution(sln_means.v, const_space, solution);
-
   std::stringstream ss_vtk;
   std::stringstream ss_bmp;
   ss_vtk.precision(2);
   ss_vtk.setf(std::ios_base::uppercase | std::ios_base::scientific);
-  ss_vtk << "solution_HSS(" << steps_per_time_step << ")_" << SolvedExampleString[solvedExample] 
-         << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
+  ss_vtk << "solution_HSS_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
 
 //   ss_bmp.precision(2);
 //   ss_bmp.setf(std::ios_base::uppercase | std::ios_base::scientific);
@@ -656,10 +638,10 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
 //          << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".bmp";
 
 #ifdef SHOW_OUTPUT
-  solution_view->show(solution);
-  solution_view->save_screenshot(ss_bmp.str().c_str(), true);
+  //solution_view->show(solution);
+  //solution_view->save_screenshot(ss_bmp.str().c_str(), true);
 #endif
-  solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
+  //solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
 
   errorCalculator.calculate_errors(solution, es);
 
@@ -673,7 +655,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
                         int time_step_count, MeshFunctionSharedPtr<double> solution, 
                         MeshFunctionSharedPtr<double> exact_solution, ScalarView* solution_view, ScalarView* exact_view,
                         double s, double sigma, Hermes::Mixins::Loggable& logger, int smoothing_steps_per_V_cycle, 
-                        double cfl, int V_cycles_per_time_step)
+                        double cfl)
 {
   // Spaces
   SpaceSharedPtr<double> space_2(new L2Space<double>(mesh, polynomialDegree, new L2ShapesetTaylor));
@@ -694,10 +676,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   SimpleVector<double> vector_b_0;
 
   // Matrices (M+A_tilde), vectors -A(u_K)
-  SmoothingWeakForm weakform_smoother(solvedExample, true, 1, add_inlet(solvedExample), "Inlet",
-                                      diffusivity, s, sigma);
-  SmoothingWeakForm weakform_smoother_coarse(solvedExample, false, 1, add_inlet(solvedExample), "Inlet",
-                                             diffusivity, s, sigma);
+  SmoothingWeakForm weakform_smoother(solvedExample, true, 1, add_inlet(solvedExample), "Inlet", diffusivity, s, sigma);
+  SmoothingWeakForm weakform_smoother_coarse(solvedExample, false, 1, add_inlet(solvedExample), "Inlet", diffusivity, s, sigma);
   weakform_smoother.set_current_time_step(time_step_length);
   weakform_smoother.set_ext(Hermes::vector<MeshFunctionSharedPtr<double> >(previous_sln, exact_solution));
   weakform_smoother_coarse.set_current_time_step(time_step_length);
@@ -755,11 +735,6 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   solver_0.setup_factorization();
   solver_0.set_reuse_scheme(HERMES_REUSE_MATRIX_STRUCTURE_COMPLETELY);
 
-  // Utils.
-//   double* residual_2 = new double[ndofs_2];
-//   double* residual_1 = new double[ndofs_1];
-//   double* residual_0 = new double[ndofs_0];
-
   SimpleVector<double> sln_2(ndofs_2);
   SimpleVector<double> sln_1(ndofs_1);
   SimpleVector<double> sln_0(ndofs_0);
@@ -790,7 +765,6 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
   double time = 0.;
   if (!is_timedep(solvedExample))
     time_step_count = 1;
-  int iteration_count = (int)(is_timedep(solvedExample) ? V_cycles_per_time_step : 10000);
   for (int time_step = 1; time_step <= time_step_count; time_step++)
   {
     double initial_residual, current_residual;
@@ -806,16 +780,10 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
       vector_A_2.change_sign()->add_vector(&vector_b_2);
       initial_residual=calc_l2_norm_algebraic(space_2, vector_A_2.v);
-//       initial_residual=calc_l2_norm_algebraic(space_0, vector_A_2.v);
-//       SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(vector_A_2.v, space_0, space_2);
-//       initial_residual=calc_l2_norm_algebraic(space_0, temp_1->v);
-//       delete temp_1;
     }
 
-//     for (int step = 0; step < iteration_count; step++)
     do
     {
-//       static_log.info("\tV-cycle %i.", step);
       v_cycles++;
 
 #pragma region 0 - highest level
@@ -1007,10 +975,8 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
       solution_view->show(previous_sln);
 #endif
 
-      if (!is_timedep(solvedExample) && error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v)))
-        break;
-
       // Computation of the current residual
+      // Decision whether or not to end this loop.
       if (is_timedep(solvedExample))
       {
         matrix_A_2.multiply_with_vector(sln_2.v, vector_A_2.v, true);
@@ -1020,14 +986,18 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
         matrix_M_2.multiply_with_vector(util_2.v, util_21.v, true);
         vector_A_2.add_vector(util_21.v);
         current_residual=calc_l2_norm_algebraic(space_2, vector_A_2.v);
-//         current_residual=calc_l2_norm_algebraic(space_0, vector_A_2.v);
-//         SimpleVector<double>* temp_1 = (SimpleVector<double>*)cut_off_ders(vector_A_2.v, space_0, space_2);
-//         current_residual=calc_l2_norm_algebraic(space_0, temp_1->v);
-//         delete temp_1;
+
         if (current_residual / initial_residual < tolerance)
           break;
       }
-    } while (true);
+      else
+      {
+        if (error_reduction_condition(calc_l2_error_algebraic(space_2, sln_2.v, es_v)))
+          break;
+      }
+
+    }
+    while (true);
 
     if (is_timedep(solvedExample))
       time += time_step_length;
@@ -1048,17 +1018,13 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
     std::stringstream ss_vtk;
     ss_vtk.precision(2);
     ss_vtk.setf(std::ios_base::uppercase | std::ios_base::scientific);
-    ss_vtk << "solution_MG(" << V_cycles_per_time_step << "-" << smoothing_steps_per_V_cycle << ")_" 
-           << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" 
-           << diffusivity << "_CFL=" << cfl << ".dat";
+    ss_vtk << "solution_MG(" << smoothing_steps_per_V_cycle << ")_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
     solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
 
     std::stringstream ss_bmp;
     ss_bmp.precision(2);
     ss_bmp.setf(std::ios_base::uppercase | std::ios_base::scientific);
-    ss_bmp << "solution_MG(" << V_cycles_per_time_step << "-" << smoothing_steps_per_V_cycle << ")_" 
-           << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" 
-           << diffusivity << "_CFL=" << cfl << ".bmp";
+    ss_bmp << "solution_MG(" << smoothing_steps_per_V_cycle << ")_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".bmp";
 
 #ifdef SHOW_OUTPUT
     solution_view->show(solution);

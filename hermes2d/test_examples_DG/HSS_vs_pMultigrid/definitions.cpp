@@ -146,6 +146,7 @@ ExactWeakFormTimedep::ExactWeakFormTimedep(SolvedExample solvedExample, bool add
 
   // A_tilde  
   add_matrix_form(new CustomMatrixFormVolConvection(0, 0));
+  add_matrix_form(new DefaultMatrixFormVol<double>(0, 0));
   add_matrix_form_DG(new CustomMatrixFormInterfaceConvection(0, 0, false));
   // A_tilde_surf
   this->add_matrix_form_surf(new CustomMatrixFormSurfConvection(0, 0));
@@ -159,6 +160,7 @@ ExactWeakFormTimedep::ExactWeakFormTimedep(SolvedExample solvedExample, bool add
   }
 
   // b
+  add_vector_form(new CustomVectorFormVol(0, 0, 1.));
   if (add_inlet)
   {
     this->add_vector_form_surf(new CustomVectorFormSurfConvection(0, 0, true, false));
