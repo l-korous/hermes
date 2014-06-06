@@ -1,9 +1,15 @@
-HSS_vs_pMultigrid 4 0.01
-HSS_vs_pMultigrid 4 0.001
-HSS_vs_pMultigrid 4 0.00
-HSS_vs_pMultigrid 5 0.01
-HSS_vs_pMultigrid 5 0.001
-HSS_vs_pMultigrid 5 0.00
-HSS_vs_pMultigrid 6 0.01
-HSS_vs_pMultigrid 6 0.001
-HSS_vs_pMultigrid 6 0.00
+HSS_vs_pMultigrid 3 0.1 1
+HSS_vs_pMultigrid 3 0.001 1
+HSS_vs_pMultigrid 3 0.00 1
+HSS_vs_pMultigrid 4 0.1 1
+HSS_vs_pMultigrid 4 0.001 1
+HSS_vs_pMultigrid 4 0.00 1
+HSS_vs_pMultigrid 5 0.1 1
+HSS_vs_pMultigrid 5 0.001 1
+HSS_vs_pMultigrid 5 0.00 1
+HSS_vs_pMultigrid 6 0.1 1
+HSS_vs_pMultigrid 6 0.001 1
+HSS_vs_pMultigrid 6 0.00 1
+HSS_vs_pMultigrid 7 0.1 1
+HSS_vs_pMultigrid 7 0.001 1
+HSS_vs_pMultigrid 7 0.00 1
