@@ -27,8 +27,8 @@
 #include "mesh/mesh_reader_h2d_xml.h"
 
 
-#define DEBUG_VIEWS
 //#define DEBUG_BASES
+//#define DEBUG_VIEWS
 //#define DEBUG_ALGEBRA
 
 namespace Hermes
@@ -39,13 +39,13 @@ namespace Hermes
     {
     }
 
-    AdaptSolverCriterionErrorThreshold::AdaptSolverCriterionErrorThreshold(double error_tolerance) : AdaptSolverCriterion(), error_threshold(error_threshold)
+    AdaptSolverCriterionErrorThreshold::AdaptSolverCriterionErrorThreshold(double error_tolerance) : AdaptSolverCriterion(), error_threshold(error_tolerance)
     {
     }
 
     bool AdaptSolverCriterionErrorThreshold::done(double error, unsigned short iteration)
     {
-      return error < this->error_threshold;
+      return (error < this->error_threshold);
     }
 
     AdaptSolverCriterionFixed::AdaptSolverCriterionFixed(unsigned short refinement_levels) : AdaptSolverCriterion(), refinement_levels(refinement_levels)
@@ -76,6 +76,7 @@ namespace Hermes
     template<typename Scalar, typename SolverType>
     bool AdaptSolver<Scalar, SolverType>::wait_on_show = false;
 
+    
 
     template<typename Scalar, typename SolverType>
     AdaptSolver<Scalar, SolverType>::AdaptSolver(std::vector<SpaceSharedPtr<Scalar> > initial_spaces, WeakFormSharedPtr<Scalar> wf, ErrorCalculator<Scalar>* error_calculator, AdaptivityStoppingCriterion<Scalar>* stopping_criterion_single_step, std::vector<RefinementSelectors::Selector<Scalar>*> selectors, AdaptSolverCriterion* stopping_criterion_global)

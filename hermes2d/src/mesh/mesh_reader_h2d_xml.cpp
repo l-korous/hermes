@@ -207,7 +207,7 @@ namespace Hermes
 
         for (unsigned int subdomains_i = 0; subdomains_i < subdomains_count; subdomains_i++)
         {
-          for (unsigned short element_i = 0; element_i < parsed_xml_domain->elements().el().size(); element_i++)
+          for(unsigned short element_i = 0; element_i < parsed_xml_domain->elements().el().size(); element_i++)
           {
             XMLSubdomains::domain::elements_type::el_type* element = &parsed_xml_domain->elements().el().at(element_i);
 
@@ -616,7 +616,7 @@ namespace Hermes
             int new_i = points_to_vertices.size();
             vertices_to_vertices.insert(std::pair<unsigned int, unsigned int>(i, new_i));
             points_to_vertices.insert(std::pair<std::pair<double, double>, unsigned int>(std::pair<double, double>(meshes[meshes_i]->nodes[i].x, meshes[meshes_i]->nodes[i].y), points_to_vertices.size()));
-
+            
             vertices.v().push_back(std::auto_ptr<XMLMesh::v>(new XMLMesh::v(std::to_string(meshes[meshes_i]->nodes[i].x), std::to_string(meshes[meshes_i]->nodes[i].y), i)));
           }
           if (!hasAllElements)
@@ -719,10 +719,10 @@ namespace Hermes
       std::sort(elements.begin(), elements.end(), elementCompare);
 
       XMLSubdomains::elements_type elementsToPass;
-      for (unsigned short i = 0; i < elements.size(); i++)
+      for(unsigned short i = 0; i < elements.size(); i++)
         elementsToPass.el().push_back(*elements[i]);
 
-      for (unsigned short i = 0; i < elements.size(); i++)
+      for(unsigned short i = 0; i < elements.size(); i++)
         delete elements[i];
       XMLSubdomains::domain xmldomain(vertices, elementsToPass, edges, subdomains);
       xmldomain.curves().set(curves);
