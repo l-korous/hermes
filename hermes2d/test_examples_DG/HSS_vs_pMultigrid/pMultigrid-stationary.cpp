@@ -195,7 +195,7 @@ for (int step = 0; step < iteration_count; step++)
     ss_bmp << "solution_p=" << polynomialDegree << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << ".bmp";
     ss_vtk << "solution_p=" << polynomialDegree << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << ".dat";
     solution_view->save_screenshot(ss_bmp.str().c_str(), true);
-    solution_view->get_linearizer()->save_solution_tecplot(previous_sln, ss_vtk.str().c_str(), "solution");
+    solution_view->get_linearizer()->save_solution_tecplot(previous_sln, ss_vtk.str().c_str(), "solution", H2D_FN_VAL_0, 2.0););
     }
     */
   }

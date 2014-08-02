@@ -102,7 +102,7 @@ void solve_exact(SolvedExample solvedExample, SpaceSharedPtr<double> space, doub
   ss_vtk << "solution_Exact_" << SolvedExampleString[solvedExample] << "_" << init_ref_num << "_" << diffusivity << ".dat";
   exact_solver_view->show(es);
   exact_solver_view->save_screenshot(ss_bmp.str().c_str(), true);
-  exact_solver_view->get_linearizer()->save_solution_tecplot(es, ss_vtk.str().c_str(), "solution");
+  exact_solver_view->get_linearizer()->save_solution_tecplot(es, ss_vtk.str().c_str(), "solution", H2D_FN_VAL_0, 2.0);
   exact_solver_view->close();
 #endif
 }
@@ -171,7 +171,7 @@ void exact_solver_timedep(MeshSharedPtr mesh, SolvedExample solvedExample, int p
   exact_view->show(es);
   exact_view->save_screenshot(ss_bmpe.str().c_str(), true);
   exact_view->close();
-  exact_view->get_linearizer()->save_solution_tecplot(es, ss_vtke.str().c_str(), "exactSolution", 1, 2.0);
+  exact_view->get_linearizer()->save_solution_tecplot(es, ss_vtke.str().c_str(), "exactSolution", H2D_FN_VAL_0, 2.0);
 #endif
 }
 
@@ -639,7 +639,7 @@ std::string multiscale_decomposition_timedep(MeshSharedPtr mesh, SolvedExample s
 //          << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".bmp";
 
   solution_view->show(solution);
-  solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
+  solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", H2D_FN_VAL_0, 2.0);
 #endif
 
   if (polynomialDegree)
@@ -1035,7 +1035,7 @@ std::string p_multigrid(MeshSharedPtr mesh, SolvedExample solvedExample, int pol
     ss_vtk.precision(2);
     ss_vtk.setf(std::ios_base::uppercase | std::ios_base::scientific);
     ss_vtk << "solution_MG(" << smoothing_steps_per_V_cycle << ")_" << SolvedExampleString[solvedExample] << "_meshRefs=" << init_ref_num << "_D=" << diffusivity << "_CFL=" << cfl << ".dat";
-    solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", 1, 2.0);
+    solution_view->get_linearizer()->save_solution_tecplot(solution, ss_vtk.str().c_str(), "solution", H2D_FN_VAL_0, 2.0);
 
     std::stringstream ss_bmp;
     ss_bmp.precision(2);
